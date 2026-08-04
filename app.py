@@ -1,6 +1,5 @@
 import streamlit as st
 from google import genai
-from google.genai.errors import APIError
 
 # Configuration de la page
 st.set_page_config(page_title="Atlas - Coach", page_icon="🎓")
@@ -33,15 +32,17 @@ if prompt := st.chat_input("Pose une question à Atlas..."):
     # 2. Générer la réponse
     with st.chat_message("assistant"):
         try:
+            # Initialisation directe avec la clé passée explicitement
             client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
             
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model="gemini-1.5-flash-latest",
                 contents=prompt,
+                config={"system_instruction": "Tu es Atlas, un coach pédagogique bienveillant et structuré."}
             )
             
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
             
         except Exception as e:
-            st.error(f"Une erreur est survenue : {e}")
+            st.error(f"Erreur : {e}")
