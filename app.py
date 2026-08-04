@@ -1,5 +1,5 @@
 import streamlit as st
-from google import genai
+import google.generativeai as genai
 
 # Configuration de la page
 st.set_page_config(page_title="Atlas - Coach", page_icon="🎓")
@@ -32,14 +32,15 @@ if prompt := st.chat_input("Pose une question à Atlas..."):
     # 2. Générer la réponse
     with st.chat_message("assistant"):
         try:
-            # Initialisation directe avec la clé passée explicitement
-            client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+            # Configuration globale de l'API avec l'ancienne librairie ultra stable
+            genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
             
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt,
-                config={"system_instruction": "Tu es Atlas, un coach pédagogique bienveillant et structuré."}
+            model = genai.GenerativeModel(
+                model_name="gemini-1.5-flash",
+                system_instruction="Tu es Atlas, un coach pédagogique bienveillant et structuré."
             )
+            
+            response = model.generate_content(prompt)
             
             st.markdown(response.text)
             st.session_state.messages.append({"role": "assistant", "content": response.text})
