@@ -36,7 +36,7 @@ if prompt := st.chat_input("Pose une question à Atlas..."):
             client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
             
             response = client.models.generate_content(
-                model="gemini-1.5-flash",
+                model="gemini-2.0-flash",
                 contents=prompt,
                 config={"system_instruction": "Tu es Atlas, un coach pédagogique bienveillant et structuré."}
             )
