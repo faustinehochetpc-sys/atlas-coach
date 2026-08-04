@@ -12,7 +12,7 @@ if "chat" not in st.session_state:
     system_instruction = "Tu es Atlas, un coach pédagogique bienveillant et structuré."
 
     st.session_state.chat = client.chats.create(
-        model="gemini-1.5-flash",
+        model="gemini-2.5-flash",
         config=types.GenerateContentConfig(
             system_instruction=system_instruction,
             temperature=0.7,
