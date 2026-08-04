@@ -22,7 +22,7 @@ for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- ENTÉRÉE UTILISATEUR & RÉPONSE ---
+# --- ENTRÉE UTILISATEUR & RÉPONSE ---
 if prompt := st.chat_input("Pose une question à Atlas..."):
     # 1. Afficher la question
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -31,18 +31,11 @@ if prompt := st.chat_input("Pose une question à Atlas..."):
 
     # 2. Générer la réponse
     with st.chat_message("assistant"):
-        # On crée un client tout neuf pour chaque message (évite l'erreur de connexion fermée)
         client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
         
-        # On prépare l'historique pour l'API
-        history_for_api = [
-            {"role": msg["role"], "parts": [{"text": msg["content"]}]}
-            for msg in st.session_state.messages
-        ]
-        
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=history_for_api,
+            model="gemini-2.0-flash",
+            contents=prompt,
             config={"system_instruction": "Tu es Atlas, un coach pédagogique bienveillant et structuré."}
         )
         
