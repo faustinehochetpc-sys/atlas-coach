@@ -7,10 +7,10 @@ st.set_page_config(page_title="Atlas - Coach", page_icon="🎓")
 st.title("🎓 Atlas - Ton Coach Personnel")
 
 # --- INITIALISATION DE GEMINI ---
-if "chat" not in st.session_state:
-    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
-    system_instruction = "Tu es Atlas, un coach pédagogique bienveillant et structuré."
+client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
 
+if "chat" not in st.session_state:
+    system_instruction = "Tu es Atlas, un coach pédagogique bienveillant et structuré."
     st.session_state.chat = client.chats.create(
         model="gemini-2.5-flash",
         config=types.GenerateContentConfig(
@@ -30,38 +30,20 @@ with st.sidebar:
         accept_multiple_files=True
     )
 
-    if uploaded_files:
-        if st.button("Envoyer les documents à Atlas"):
-            for uploaded_file in uploaded_files:
-                bytes_data = uploaded_file.read()
-                prompt_doc = f"Voici le document nommé '{uploaded_file.name}' :\n\n"
+# --- AFFICHAGE DE L'HISTORIQUE ---
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-                try:
-                    contenu_texte = bytes_data.decode("utf-8")
-                    prompt_doc += contenu_texte
-                except UnicodeDecodeError:
-                    prompt_doc += f"[Fichier binaire/PDF chargé de {len(bytes_data)} octets]"
-
-                response = st.session_state.chat.send_message(prompt_doc)
-                st.session_state.messages.append({
-                    "role": "system",
-                    "content": f"📄 Document chargé : **{uploaded_file.name}**"
-                })
-            st.success("Documents intégrés à la mémoire d'Atlas !")
-
-# --- AFFICHAGE DU CHAT ---
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"] if msg["role"] != "system" else "assistant"):
-        st.markdown(msg["content"])
-
-# Zone de saisie utilisateur
+# --- ENTÉRÉE UTILISATEUR & RÉPONSE ---
 if prompt := st.chat_input("Pose une question à Atlas..."):
+    # Afficher le message de l'utilisateur
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    response = st.session_state.chat.send_message(prompt)
-
+    # Réponse d'Atlas
     with st.chat_message("assistant"):
+        response = st.session_state.chat.send_message(prompt)
         st.markdown(response.text)
-    st.session_state.messages.append({"role": "assistant", "content": response.text})
+        st.session_state.messages.append({"role": "assistant", "content": response.text})
