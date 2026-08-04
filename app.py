@@ -8,7 +8,7 @@ st.title("🎓 Atlas - Ton Coach Personnel")
 
 # --- INITIALISATION DE GEMINI ---
 if "chat" not in st.session_state:
-client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
+    client = genai.Client(api_key=st.secrets["GEMINI_API_KEY"])
     system_instruction = "Tu es Atlas, un coach pédagogique bienveillant et structuré."
 
     st.session_state.chat = client.chats.create(
