@@ -1,10 +1,11 @@
 import streamlit as st
 import google.generativeai as genai
+from pypdf import PdfReader
 
-# Configuration de l'application
+# Configuration
 st.set_page_config(page_title="Atlas Coach", page_icon="🎓", layout="wide")
 
-# Liste des matières organisées par semestre
+# Liste des matières
 MATIERES = {
     # SEMESTRE 1
     "S1 - Intro aux sciences de gestion": "Bienvenue en Intro aux sciences de gestion !",
@@ -57,7 +58,21 @@ MATIERES = {
     "S4 - Business game": "Bienvenue dans le Business Game !"
 }
 
-# Initialisation de la mémoire de l'application
+# Fonction pour lire le texte des fichiers uploadés
+def extract_text_from_files(uploaded_files):
+    extracted_text = ""
+    for uploaded_file in uploaded_files:
+        if uploaded_file.name.endswith('.pdf'):
+            reader = PdfReader(uploaded_file)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text += text + "\n"
+        elif uploaded_file.name.endswith('.txt'):
+            extracted_text += uploaded_file.read().decode('utf-8') + "\n"
+    return extracted_text
+
+# Initialisation de la session
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = {}
 
@@ -66,19 +81,29 @@ with st.sidebar:
     st.title("🎓 Atlas Coach")
     selected_matiere = st.selectbox("Sélectionne ton cours :", list(MATIERES.keys()))
     
+    st.markdown("---")
+    st.header("📄 Fichiers du cours")
+    uploaded_files = st.file_uploader(
+        "Dépose tes cours (PDF, TXT) :",
+        type=["pdf", "txt"],
+        accept_multiple_files=True,
+        key=selected_matiere
+    )
+
+    st.markdown("---")
     if st.button("🗑️ Effacer cette discussion"):
         st.session_state.chat_history[selected_matiere] = [
             {"role": "assistant", "content": MATIERES[selected_matiere]}
         ]
         st.rerun()
 
-# Création du fil de discussion de la matière si inexistant
+# Initialisation de la discussion pour la matière
 if selected_matiere not in st.session_state.chat_history:
     st.session_state.chat_history[selected_matiere] = [
         {"role": "assistant", "content": MATIERES[selected_matiere]}
     ]
 
-# Zone d'affichage
+# Zone principale
 st.title(selected_matiere)
 
 for message in st.session_state.chat_history[selected_matiere]:
@@ -89,12 +114,10 @@ for message in st.session_state.chat_history[selected_matiere]:
 user_input = st.chat_input("Pose ta question sur ce cours...")
 
 if user_input:
-    # Sauvegarde et affichage du message utilisateur
     st.session_state.chat_history[selected_matiere].append({"role": "user", "content": user_input})
     with st.chat_message("user"):
         st.write(user_input)
 
-    # Réponse de l'assistant
     with st.chat_message("assistant"):
         api_key = st.secrets.get("GEMINI_API_KEY")
         
@@ -107,13 +130,22 @@ if user_input:
                 genai.configure(api_key=api_key)
                 model = genai.GenerativeModel("gemini-1.5-flash")
                 
-                prompt_contextuel = (
+                # Extraction des documents joints si présents
+                context_fichiers = ""
+                if uploaded_files:
+                    texte_fichiers = extract_text_from_files(uploaded_files)
+                    if texte_fichiers:
+                        # On limite la taille du texte pour éviter de dépasser les limites
+                        context_fichiers = f"\n\nCONTENU DES DOCUMENTS DE COURS FOURNIS PAR L'ÉLÈVE :\n{texte_fichiers[:15000]}"
+                
+                prompt_complet = (
                     f"Tu es un tuteur universitaire pédagogique et bienveillant. "
                     f"Aide l'étudiant spécifiquement pour le cours de '{selected_matiere}'. "
-                    f"Question : {user_input}"
+                    f"{context_fichiers}\n\n"
+                    f"Question de l'étudiant : {user_input}"
                 )
                 
-                response = model.generate_content(prompt_contextuel)
+                response = model.generate_content(prompt_complet)
                 reply = response.text
                 
                 st.write(reply)
