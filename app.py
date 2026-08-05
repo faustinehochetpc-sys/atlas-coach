@@ -147,3 +147,12 @@ if user_submitted:
             
         except Exception as e:
             st.error(f"Erreur : {e}")
+
+# --- SCRIPT DE VÉRIFICATION DES MODÈLES ---
+with st.sidebar:
+    if st.button("🔍 Voir mes modèles disponibles"):
+        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
+        st.write("Modèles compatibles :")
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                st.code(m.name)
