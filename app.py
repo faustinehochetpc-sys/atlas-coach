@@ -133,27 +133,9 @@ if user_submitted:
                 f"Adapte toutes tes réponses spécifiquement au domaine de {selected_matiere}."
             )
 
+            # NOTE LA PRÉSENCE DE "models/" CI-DESSOUS
             model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
+                model_name="models/gemini-1.5-flash",
                 system_instruction=system_instruction
             )
-            
-            response = model.generate_content(contents_payload)
-            
-            st.markdown(response.text)
-            current_messages.append({"role": "assistant", "content": response.text})
-            
-            save_data(st.session_state.data)
-            
-        except Exception as e:
-            st.error(f"Erreur : {e}")
-
-# --- SCRIPT DE VÉRIFICATION DES MODÈLES ---
-with st.sidebar:
-    if st.button("🔍 Voir mes modèles disponibles"):
-        genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-        st.write("Modèles compatibles :")
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                st.code(m.name)
                 
