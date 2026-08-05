@@ -32,12 +32,10 @@ MATIERES = {
     "S1 - Introduction au droit": "Bienvenue en Introduction au droit !",
     "S1 - Théories éco & enjeux contemporains": "Bienvenue en Théories économiques !",
     "S1 - Micro-économie": "Bienvenue en Micro-économie !",
-    "S1 - Expression écrite et orale": "Bienvenue en Expression écrite et orale !",
     "S1 - Fondamentaux de comptabilité": "Bienvenue en Fondamentaux de comptabilité !",
     "S1 - Informatique d'usage": "Bienvenue en Informatique d'usage !",
     "S1 - LV1 Anglais": "Welcome to English class !",
-    "S1 - Accompagnement projet 1": "Bienvenue dans l'accompagnement de projet !",
-
+    
     # SEMESTRE 2
     "S2 - Comptabilité générale": "Bienvenue en Comptabilité générale !",
     "S2 - Statistiques pour gestionnaires 1": "Bienvenue en Statistiques 1 !",
@@ -46,7 +44,6 @@ MATIERES = {
     "S2 - Négociation commerciale": "Bienvenue en Négociation commerciale !",
     "S2 - Géopolitique": "Bienvenue en Géopolitique !",
     "S2 - Sociologie de la consommation": "Bienvenue en Sociologie de la consommation !",
-    "S2 - Informatique d'usage": "Bienvenue en Informatique d'usage !",
     "S2 - LV1 Anglais": "Welcome to English class !",
 
     # SEMESTRE 3
@@ -57,8 +54,6 @@ MATIERES = {
     "S3 - Droit des sociétés": "Bienvenue en Droit des sociétés !",
     "S3 - Le manager face aux défis du numérique": "Bienvenue en Numérique & Environnement !",
     "S3 - Théorie des organisations": "Bienvenue en Théorie des organisations !",
-    "S3 - International trades": "Bienvenue en International trades !",
-    "S3 - Sales and negotiation": "Welcome to Sales and negotiation !",
     "S3 - LV1 Anglais": "Welcome to English class !",
     "S3 - Accompagnement projet 2": "Bienvenue dans l'accompagnement de projet !",
 
@@ -71,8 +66,6 @@ MATIERES = {
     "S4 - Projet": "Bienvenue dans l'espace Projet !",
     "S4 - Entrepreneuriat": "Bienvenue en Entrepreneuriat !",
     "S4 - Management de l'innovation": "Bienvenue en Management de l'innovation !",
-    "S4 - Intro to international marketing": "Welcome to International Marketing !",
-    "S4 - Management and environment": "Welcome to Management and Environment !",
     "S4 - LV1 Anglais": "Welcome to English class !",
     "S4 - Business game": "Bienvenue dans le Business Game !"
 }
