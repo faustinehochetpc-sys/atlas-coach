@@ -55,8 +55,7 @@ MATIERES = {
     "S3 - Le manager face aux défis du numérique": "Bienvenue en Numérique & Environnement !",
     "S3 - Théorie des organisations": "Bienvenue en Théorie des organisations !",
     "S3 - LV1 Anglais": "Welcome to English class !",
-    "S3 - Accompagnement projet 2": "Bienvenue dans l'accompagnement de projet !",
-
+   
     # SEMESTRE 4
     "S4 - Comptabilité de gestion": "Bienvenue en Comptabilité de gestion !",
     "S4 - Marketing opérationnel": "Bienvenue en Marketing opérationnel !",
