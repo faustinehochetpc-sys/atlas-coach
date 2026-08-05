@@ -8,15 +8,7 @@ DATA_FILE = "atlas_data.json"
 
 # --- FONCTIONS UTILES ---
 def load_data():
-    if os.path.exists(DATA_FILE):
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            pass
-            
-    # Structure par défaut avec les matières extraites de la maquette (Semestres 1 à 4)
-    return {
+    default_structure = {
         "profile": {
             "objectif": "Réussir ma Licence de Gestion",
             "style": "Explications simples avec exemples concrets"
@@ -73,6 +65,17 @@ def load_data():
             "S4 - 🎮 Business game": [{"role": "assistant", "content": "Bienvenue dans le Business Game (S4) !"}]
         }
     }
+    
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                if "matieres" in data and len(data["matieres"]) > 5:
+                    return data
+        except Exception:
+            pass
+            
+    return default_structure
 
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
