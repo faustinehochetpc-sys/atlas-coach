@@ -3,12 +3,13 @@ import google.generativeai as genai
 import json
 import os
 
-# --- CONFIGURATION FICHIERS DE STOCKAGE ---
+# --- CONFIGURATION DE LA PAGE ---
+st.set_page_config(page_title="Atlas - Coach", page_icon="🎓", layout="wide")
+
 DATA_FILE = "atlas_data.json"
 
-# --- FONCTIONS UTILES ---
-def load_data():
-    default_structure = {
+def get_default_data():
+    return {
         "profile": {
             "objectif": "Réussir ma Licence de Gestion",
             "style": "Explications simples avec exemples concrets"
@@ -39,11 +40,11 @@ def load_data():
 
             # SEMESTRE 3
             "S3 - 🎯 Marketing stratégique": [{"role": "assistant", "content": "Bienvenue en Marketing stratégique (S3) !"}],
-            "S3 - 📐 Techniques quantitatives de gestion": [{"role": "assistant", "content": "Bienvenue en Techniques quantitatives de gestion (S3) !"}],
+            "S3 - 📐 Techniques quantitatives de gestion": [{"role": "assistant", "content": "Bienvenue en TQG (S3) !"}],
             "S3 - 📉 Statistiques pour gestionnaires 2": [{"role": "assistant", "content": "Bienvenue en Statistiques 2 (S3) !"}],
             "S3 - ⚖️ Droit social": [{"role": "assistant", "content": "Bienvenue en Droit social (S3) !"}],
             "S3 - ⚖️ Droit des sociétés": [{"role": "assistant", "content": "Bienvenue en Droit des sociétés (S3) !"}],
-            "S3 - 🌐 Le manager face aux défis du numérique": [{"role": "assistant", "content": "Bienvenue dans le cours Numérique & Environnement (S3) !"}],
+            "S3 - 🌐 Le manager face aux défis du numérique": [{"role": "assistant", "content": "Bienvenue en Numérique & Environnement (S3) !"}],
             "S3 - 🏗️ Théorie des organisations": [{"role": "assistant", "content": "Bienvenue en Théorie des organisations (S3) !"}],
             "S3 - 🚢 International trades": [{"role": "assistant", "content": "Bienvenue en International trades (S3) !"}],
             "S3 - 🗣️ Sales and negotiation": [{"role": "assistant", "content": "Welcome to Sales and negotiation (S3) !"}],
@@ -65,24 +66,19 @@ def load_data():
             "S4 - 🎮 Business game": [{"role": "assistant", "content": "Bienvenue dans le Business Game (S4) !"}]
         }
     }
-    
+
+def load_data():
     if os.path.exists(DATA_FILE):
         try:
             with open(DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if "matieres" in data and len(data["matieres"]) > 5:
-                    return data
+                return json.load(f)
         except Exception:
             pass
-            
-    return default_structure
+    return get_default_data()
 
 def save_data(data):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-
-# --- CONFIGURATION DE LA PAGE ---
-st.set_page_config(page_title="Atlas - Coach", page_icon="🎓", layout="wide")
 
 if "data" not in st.session_state:
     st.session_state.data = load_data()
@@ -90,37 +86,18 @@ if "data" not in st.session_state:
 # --- BARRE LATÉRALE ---
 with st.sidebar:
     st.title("🎓 Atlas Coach")
-    st.header("📚 Programme Licence Gestion")
+    st.header("📚 Programme Licence")
     
-    list_matieres = list(st.session_state.data["matieres"].keys())
-    selected_matiere = st.selectbox("Sélectionne ton cours :", list_matieres)
+    matieres_keys = list(st.session_state.data["matieres"].keys())
+    selected_matiere = st.selectbox("Sélectionne ton cours :", matieres_keys)
     
-    with st.popover("➕ Ajouter un autre cours"):
-        new_mat_name = st.text_input("Nom de la matière :")
-        if st.button("Créer la matière") and new_mat_name:
-            if new_mat_name not in st.session_state.data["matieres"]:
-                st.session_state.data["matieres"][new_mat_name] = [
-                    {"role": "assistant", "content": f"Espace de travail créé pour {new_mat_name} !"}
-                ]
-                save_data(st.session_state.data)
-                st.rerun()
-
     st.markdown("---")
-    
-    if st.button("🔄 Réinitialiser ce cours"):
+    if st.button("🔄 Réinitialiser la discussion"):
         st.session_state.data["matieres"][selected_matiere] = [
             {"role": "assistant", "content": f"Discussion réinitialisée pour {selected_matiere}."}
         ]
         save_data(st.session_state.data)
         st.rerun()
-
-    st.markdown("---")
-    st.header("📄 Fichiers du cours")
-    uploaded_files = st.file_uploader(
-        "Dépose tes cours (PDF, TXT) :",
-        accept_multiple_files=True,
-        key=selected_matiere
-    )
 
     st.markdown("---")
     with st.expander("⚙️ Profil & Préférences"):
@@ -134,45 +111,26 @@ with st.sidebar:
             st.session_state.data["profile"]["objectif"] = prof_obj
             st.session_state.data["profile"]["style"] = prof_style
             save_data(st.session_state.data)
-            st.success("Profil enregistré !")
+            st.success("Profil mis à jour !")
 
 # --- CONTENU PRINCIPAL ---
-st.title(f"{selected_matiere}")
-st.caption(f"Espace de travail dédié • {st.session_state.data['profile']['objectif']}")
+st.title(selected_matiere)
+st.caption(f"Objectif : {st.session_state.data['profile']['objectif']}")
 
-current_messages = st.session_state.data["matieres"][selected_matiere]
+current_messages = st.session_state.data["matieres"].get(selected_matiere, [])
 
-# Affichage des messages
 for message in current_messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# --- ENTRÉE UTILISATEUR (TEXTE OU VOCAL) ---
-st.subheader("🎙️ Parler à Atlas")
-audio_input = st.audio_input("Enregistre ton message vocal")
+# Entrée textuelle uniquement
 prompt = st.chat_input(f"Pose ta question pour {selected_matiere}...")
 
-user_submitted = False
-contents_payload = []
-
-if audio_input is not None:
-    audio_bytes = audio_input.read()
-    current_messages.append({"role": "user", "content": "🎙️ *[Message vocal envoyé]*"})
-    contents_payload.append({
-        "mime_type": audio_input.type,
-        "data": audio_bytes
-    })
-    user_submitted = True
-
-elif prompt:
+if prompt:
     current_messages.append({"role": "user", "content": prompt})
-    contents_payload.append(prompt)
-    user_submitted = True
-
-# --- GÉNÉRATION DE LA RÉPONSE ---
-if user_submitted:
+    
     with st.chat_message("user"):
-        st.markdown(current_messages[-1]["content"])
+        st.markdown(prompt)
 
     with st.chat_message("assistant"):
         try:
@@ -180,12 +138,12 @@ if user_submitted:
             
             prof = st.session_state.data["profile"]
             system_instruction = (
-                "Tu es Atlas, un coach pédagogique personnel, bienveillant et super structuré.\n"
+                f"Tu es Atlas, un coach pédagogique personnel, bienveillant et structuré.\n"
                 f"CONTEXTE ACTUEL :\n"
-                f"- Matière étudiée : {selected_matiere}\n"
-                f"- Objectif de l'élève : {prof.get('objectif')}\n"
-                f"- Style d'explication souhaité : {prof.get('style')}\n\n"
-                f"Adapte toutes tes réponses spécifiquement au domaine de {selected_matiere}."
+                f"- Matière : {selected_matiere}\n"
+                f"- Objectif : {prof.get('objectif')}\n"
+                f"- Style : {prof.get('style')}\n\n"
+                f"Adapte tes réponses spécifiquement au cours de {selected_matiere}."
             )
 
             model = genai.GenerativeModel(
@@ -193,12 +151,17 @@ if user_submitted:
                 system_instruction=system_instruction
             )
             
-            response = model.generate_content(contents_payload)
+            # Formatage de l'historique pour Gemini
+            history_payload = []
+            for msg in current_messages:
+                role = "user" if msg["role"] == "user" else "model"
+                history_payload.append({"role": role, "parts": [msg["content"]]})
+
+            response = model.generate_content(history_payload)
             
             st.markdown(response.text)
             current_messages.append({"role": "assistant", "content": response.text})
-            
             save_data(st.session_state.data)
             
         except Exception as e:
-            st.error(f"Erreur : {e}")
+            st.error(f"Erreur de connexion à l'IA : {e}")
