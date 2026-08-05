@@ -1,8 +1,29 @@
 import streamlit as st
 import google.generativeai as genai
 from pypdf import PdfReader
+import json
+import os
 
 st.set_page_config(page_title="Atlas Coach", page_icon="🎓", layout="wide")
+
+DB_FILE = "chat_history.json"
+
+# Fonctions pour sauvegarder et charger l'historique sur le disque
+def load_history():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_history(history):
+    try:
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        st.error(f"Erreur de sauvegarde : {e}")
 
 MATIERES = {
     # SEMESTRE 1
@@ -69,8 +90,9 @@ def extract_text_from_files(uploaded_files):
             extracted_text += uploaded_file.read().decode('utf-8') + "\n"
     return extracted_text
 
+# Charger l'historique permanent au démarrage
 if "chat_history" not in st.session_state:
-    st.session_state.chat_history = {}
+    st.session_state.chat_history = load_history()
 
 with st.sidebar:
     st.title("🎓 Atlas Coach")
@@ -90,6 +112,7 @@ with st.sidebar:
         st.session_state.chat_history[selected_matiere] = [
             {"role": "assistant", "content": MATIERES[selected_matiere]}
         ]
+        save_history(st.session_state.chat_history)
         st.rerun()
 
 if selected_matiere not in st.session_state.chat_history:
@@ -107,6 +130,8 @@ user_input = st.chat_input("Pose ta question sur ce cours...")
 
 if user_input:
     st.session_state.chat_history[selected_matiere].append({"role": "user", "content": user_input})
+    save_history(st.session_state.chat_history)
+    
     with st.chat_message("user"):
         st.write(user_input)
 
@@ -117,6 +142,7 @@ if user_input:
             error_msg = "⚠️ La clé API `GEMINI_API_KEY` n'est pas configurée dans Streamlit."
             st.warning(error_msg)
             st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": error_msg})
+            save_history(st.session_state.chat_history)
         else:
             try:
                 genai.configure(api_key=api_key)
@@ -141,8 +167,10 @@ if user_input:
 
                 st.write(reply)
                 st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": reply})
+                save_history(st.session_state.chat_history)
                 
             except Exception as e:
                 error_msg = f"Erreur lors de la réponse : {e}"
                 st.error(error_msg)
                 st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": error_msg})
+                save_history(st.session_state.chat_history)
