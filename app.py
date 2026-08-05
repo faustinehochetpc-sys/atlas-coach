@@ -2,7 +2,6 @@ import streamlit as st
 import google.generativeai as genai
 from pypdf import PdfReader
 
-# Configuration
 st.set_page_config(page_title="Atlas Coach", page_icon="🎓", layout="wide")
 
 MATIERES = {
@@ -115,30 +114,13 @@ if user_input:
         api_key = st.secrets.get("GEMINI_API_KEY")
         
         if not api_key:
-            error_msg = "⚠️ La clé API `GEMINI_API_KEY` n'est pas configurée."
+            error_msg = "⚠️ La clé API `GEMINI_API_KEY` n'est pas configurée dans Streamlit."
             st.warning(error_msg)
             st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": error_msg})
         else:
             try:
                 genai.configure(api_key=api_key)
                 
-                # 1. Trouver un modèle compatible disponible sur cette clé
-                available_models = [
-                    m.name for m in genai.list_models() 
-                    if 'generateContent' in m.supported_generation_methods
-                ]
-                
-                if not available_models:
-                    raise Exception("Aucun modèle 'generateContent' n'est accessible avec cette clé API.")
-                
-                # Préférer flash ou pro s'ils existent dans la liste, sinon prendre le 1er disponible
-                chosen_model = available_models[0]
-                for target in ["models/gemini-1.5-flash", "models/gemini-1.5-pro", "models/gemini-pro"]:
-                    if target in available_models:
-                        chosen_model = target
-                        break
-
-                # 2. Préparer le prompt
                 context_fichiers = ""
                 if uploaded_files:
                     texte_fichiers = extract_text_from_files(uploaded_files)
@@ -146,18 +128,19 @@ if user_input:
                         context_fichiers = f"\n\nDOCUMENTS DE COURS :\n{texte_fichiers[:15000]}"
                 
                 prompt_complet = (
-                    f"Tu es un tuteur universitaire. "
-                    f"Aide l'étudiant pour le cours de '{selected_matiere}'. "
+                    f"Tu es un tuteur universitaire pédagogique et bienveillant. "
+                    f"Aide l'étudiant spécifiquement pour le cours de '{selected_matiere}'. "
                     f"{context_fichiers}\n\n"
-                    f"Question : {user_input}"
+                    f"Question de l'étudiant : {user_input}"
                 )
                 
-                # 3. Génération
-                model = genai.GenerativeModel(chosen_model)
+                model = genai.GenerativeModel("gemini-2.5-flash")
                 response = model.generate_content(prompt_complet)
-                
-                st.write(response.text)
-                st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": response.text})
+
+                reply = response.text if (response and response.text) else "Désolé, impossible d'obtenir une réponse du modèle pour le moment."
+
+                st.write(reply)
+                st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": reply})
                 
             except Exception as e:
                 error_msg = f"Erreur lors de la réponse : {e}"
