@@ -134,7 +134,7 @@ if user_input:
                     f"Question de l'étudiant : {user_input}"
                 )
                 
-                model = genai.GenerativeModel("gemini-2.5-flash")
+                model = genai.GenerativeModel("gemini-3.5-flash")
                 response = model.generate_content(prompt_complet)
 
                 reply = response.text if (response and response.text) else "Désolé, impossible d'obtenir une réponse du modèle pour le moment."
