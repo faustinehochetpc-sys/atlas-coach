@@ -178,7 +178,7 @@ if mode == "Cours & IA":
                         Cours : {txt if txt else prompt_custom}
                         """
                         try:
-                            model = genai.GenerativeModel('gemini-1.5-flash')
+                            model = genai.GenerativeModel('gemini-1.5-pro')
                             res = model.generate_content(p_flash)
                             clean = res.text.replace("```json", "").replace("```", "").strip()
                             new_cards = json.loads(clean)
