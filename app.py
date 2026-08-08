@@ -3,11 +3,14 @@ import google.generativeai as genai
 from pypdf import PdfReader
 import json
 import os
+import database  # Module de gestion SQLite
 
 st.set_page_config(page_title="Atlas Coach", page_icon="🎓", layout="wide")
 
-DB_FILE = "chat_history.json"
 FILES_DIR = "fichiers_cours"
+
+# --- INITIALISATION DE LA BASE DE DONNÉES SQLITE ---
+database.init_db()
 
 # --- INSTRUCTIONS SYSTÈME POUR ATLAS ---
 SYSTEM_INSTRUCTION = """
@@ -80,23 +83,6 @@ CONSIGNES & RÈGLES D'ACTION
 3. CONCENTRATION SUR LES ÉTUDES :
    Garde Faustine focalisée sur la réussite de sa L2 et sa progression en anglais.
 """
-
-# --- GESTION DES HISTORIQUES ---
-def load_history():
-    if os.path.exists(DB_FILE):
-        try:
-            with open(DB_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return {}
-    return {}
-
-def save_history(history):
-    try:
-        with open(DB_FILE, "w", encoding="utf-8") as f:
-            json.dump(history, f, ensure_ascii=False, indent=2)
-    except Exception as e:
-        st.error(f"Erreur de sauvegarde : {e}")
 
 # --- GESTION DU STOCKAGE DES FICHIERS ---
 def get_matiere_folder(selected_matiere):
@@ -181,9 +167,7 @@ MATIERES = {
     "S4 - Business game": "Bienvenue dans le Business Game !"
 }
 
-# Initialisation des états dans la session Streamlit
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = load_history()
+# Initialisation des états temporaires
 if "qcm_data" not in st.session_state:
     st.session_state.qcm_data = {}
 if "exercice_actuel" not in st.session_state:
@@ -216,19 +200,6 @@ with st.sidebar:
         for f in existing_files:
             st.text(f"• {f}")
 
-    st.markdown("---")
-    if st.button("🗑️ Effacer cette discussion"):
-        st.session_state.chat_history[selected_matiere] = [
-            {"role": "assistant", "content": MATIERES[selected_matiere]}
-        ]
-        save_history(st.session_state.chat_history)
-        st.rerun()
-
-if selected_matiere not in st.session_state.chat_history:
-    st.session_state.chat_history[selected_matiere] = [
-        {"role": "assistant", "content": MATIERES[selected_matiere]}
-    ]
-
 # --- AFFICHAGE PRINCIPAL ---
 st.title(f"🎓 {selected_matiere}")
 
@@ -257,17 +228,25 @@ def call_gemini(prompt):
         st.error(f"Erreur API : {e}")
         return None
 
+# --- CHARGEMENT DE L'HISTORIQUE DEPUIS LA BASE SQLITE ---
+chat_history = database.charger_messages(selected_matiere)
+
+# Message de bienvenue automatique si aucun message n'existe pour cette matière
+if not chat_history:
+    welcome_msg = MATIERES[selected_matiere]
+    database.sauvegarder_message(selected_matiere, "assistant", welcome_msg)
+    chat_history = database.charger_messages(selected_matiere)
+
 # --- ONGLET 1 : CHAT TUTEUR ---
 with tab_chat:
-    for message in st.session_state.chat_history[selected_matiere]:
+    for message in chat_history:
         with st.chat_message(message["role"]):
             st.write(message["content"])
 
     user_input = st.chat_input("Pose ta question sur ce cours...")
 
     if user_input:
-        st.session_state.chat_history[selected_matiere].append({"role": "user", "content": user_input})
-        save_history(st.session_state.chat_history)
+        database.sauvegarder_message(selected_matiere, "user", user_input)
         
         with st.chat_message("user"):
             st.write(user_input)
@@ -284,8 +263,8 @@ with tab_chat:
             reply = call_gemini(prompt)
             if reply:
                 st.write(reply)
-                st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": reply})
-                save_history(st.session_state.chat_history)
+                database.sauvegarder_message(selected_matiere, "assistant", reply)
+                st.rerun()
 
 # --- ONGLET 2 : EXERCICES PRATIQUES ---
 with tab_exo:
