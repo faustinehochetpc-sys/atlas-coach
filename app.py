@@ -3,7 +3,8 @@ import google.generativeai as genai
 from pypdf import PdfReader
 import json
 import os
-import database  # Module de gestion SQLite
+import database  # Module SQLite
+import rag       # Module de recherche avancée dans les cours
 
 st.set_page_config(page_title="Atlas Coach", page_icon="🎓", layout="wide")
 
@@ -98,30 +99,6 @@ def save_uploaded_files(uploaded_files, target_folder):
         file_path = os.path.join(target_folder, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
-
-def read_all_matiere_files(folder_path):
-    extracted_text = ""
-    if not os.path.exists(folder_path):
-        return extracted_text
-        
-    for filename in os.listdir(folder_path):
-        file_path = os.path.join(folder_path, filename)
-        if filename.endswith('.pdf'):
-            try:
-                reader = PdfReader(file_path)
-                for page in reader.pages:
-                    text = page.extract_text()
-                    if text:
-                        extracted_text += text + "\n"
-            except Exception as e:
-                st.warning(f"Impossible de lire le fichier {filename} : {e}")
-        elif filename.endswith('.txt'):
-            try:
-                with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
-                    extracted_text += f.read() + "\n"
-            except Exception as e:
-                st.warning(f"Impossible de lire le fichier {filename} : {e}")
-    return extracted_text
 
 MATIERES = {
     # SEMESTRE 1
@@ -252,12 +229,13 @@ with tab_chat:
             st.write(user_input)
 
         with st.chat_message("assistant"):
-            texte_fichiers = read_all_matiere_files(matiere_folder)
-            context_fichiers = f"\n\nDOCUMENTS DE COURS :\n{texte_fichiers[:15000]}" if texte_fichiers else ""
+            # RECHERCHE RAG DANS LES COURS
+            context_fichiers = rag.search_in_course_files(matiere_folder, user_input)
+            str_context = f"\n\nEXTRAITS DU COURS PERTINENTS :\n{context_fichiers}" if context_fichiers else ""
             
             prompt = (
                 f"Aide l'étudiante pour le cours '{selected_matiere}'. "
-                f"{context_fichiers}\n\nQuestion : {user_input}"
+                f"{str_context}\n\nQuestion : {user_input}"
             )
             
             reply = call_gemini(prompt)
@@ -272,11 +250,11 @@ with tab_exo:
     st.write("Génère un exercice sur mesure (cas pratique, problème de calcul, ou mise en pratique d'anglais) basé sur tes cours.")
     
     if st.button("🎲 Générer un nouvel exercice", key=f"btn_exo_{selected_matiere}"):
-        texte_fichiers = read_all_matiere_files(matiere_folder)
+        context_fichiers = rag.search_in_course_files(matiere_folder, "exercice cours révision")
         prompt_exo = (
             f"Crée un exercice pratique court et adapté au niveau L2 Gestion pour la matière '{selected_matiere}'. "
             f"L'exercice doit comporter une mise en situation et 1 ou 2 questions précises. Ne donne pas la réponse tout de suite. "
-            f"Contenu des cours enregistrés : {texte_fichiers[:10000]}"
+            f"Contenu des cours enregistrés : {context_fichiers}"
         )
         exercice_genere = call_gemini(prompt_exo)
         if exercice_genere:
@@ -307,13 +285,13 @@ with tab_qcm:
     st.subheader(f"🧪 QCM de révision - {selected_matiere}")
     
     if st.button("🔄 Générer un QCM (3 questions)", key=f"btn_qcm_{selected_matiere}"):
-        texte_fichiers = read_all_matiere_files(matiere_folder)
+        context_fichiers = rag.search_in_course_files(matiere_folder, "qcm notions fondamentales")
         prompt_qcm = (
             f"Génère un QCM de 3 questions à choix multiples sur le cours '{selected_matiere}'. "
             f"Consigne stricte : Réponds UNIQUEMENT sous la forme d'un tableau JSON valide, sans balises markdown, sans texte additionnel. "
             f"Structure requise :\n"
             f'[\n  {{\n    "question": "Texte question",\n    "options": ["A", "B", "C", "D"],\n    "reponse": "Option exacte",\n    "explication": "Pourquoi c\'est juste"\n  }}\n]\n'
-            f"Contenu des cours : {texte_fichiers[:10000]}"
+            f"Contenu des cours : {context_fichiers}"
         )
         res = call_gemini(prompt_qcm)
         if res:
@@ -353,7 +331,7 @@ with tab_errors:
     
     if st.button("🔎 Analyser mes erreurs", key=f"btn_err_{selected_matiere}"):
         if student_submission:
-            texte_fichiers = read_all_matiere_files(matiere_folder)
+            context_fichiers = rag.search_in_course_files(matiere_folder, student_submission)
             prompt_err = (
                 f"Analyse le texte suivant écrit par l'étudiante Faustine dans le cadre du cours '{selected_matiere}'.\n\n"
                 f"Texte à analyser : {student_submission}\n\n"
@@ -361,7 +339,7 @@ with tab_errors:
                 f"1. Identifie précisément les fautes (concepts erronés, erreurs de calcul en gestion ou fautes de grammaire/vocabulaire en anglais).\n"
                 f"2. Explique simplement pourquoi c'est incorrect.\n"
                 f"3. Donne la correction optimale ainsi qu'un conseil de révision.\n"
-                f"Documents du cours : {texte_fichiers[:10000]}"
+                f"Documents du cours : {context_fichiers}"
             )
             analysis = call_gemini(prompt_err)
             if analysis:
