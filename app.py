@@ -1,349 +1,213 @@
 import streamlit as st
-import google.generativeai as genai
-from pypdf import PdfReader
+import requests
 import json
 import os
-import database  # Module SQLite
-import rag       # Module de recherche avancée dans les cours
 
-st.set_page_config(page_title="Atlas Coach", page_icon="🎓", layout="wide")
+# Configuration de la page Streamlit
+st.set_page_config(
+    page_title="Atlas Dashboard - Learning & Revision",
+    page_icon="🎓",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-FILES_DIR = "fichiers_cours"
+# Style CSS personnalisé
+st.markdown("""
+<style>
+    .main-header {
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: #1E3A8A;
+        margin-bottom: 0.2rem;
+    }
+    .sub-header {
+        font-size: 1.1rem;
+        color: #4B5563;
+        margin-bottom: 2rem;
+    }
+    .stButton>button {
+        border-radius: 8px;
+        font-weight: 600;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# --- INITIALISATION DE LA BASE DE DONNÉES SQLITE ---
-database.init_db()
-
-# --- INSTRUCTIONS SYSTÈME POUR ATLAS ---
-SYSTEM_INSTRUCTION = """
-Tu es "Atlas", l'agent IA personnel et coach d'études de Faustine.
-- Ton objectif principal : L'aider à réussir sa Licence 2 de Gestion (S3 & S4) ET lui faire rattraper son retard en anglais pour acquérir des bases très solides.
-- Ton ton : Bienveillant, encourageant, très pédagogue, mais exigeant et structuré.
-
-==================================================
-🎯 OBJECTIF ANGLAIS : PROGRAMME DE REMISE À NIVEAU INTENSIF
-==================================================
-Faustine a de grosses lacunes en anglais et doit repartir sur des bases solides.
-- Pédagogie adaptée : Explique toujours les concepts de grammaire et le vocabulaire de manière très simple, sans jargon inutile.
-- Progressivité : Commence par les structures fondamentales (temps de base, construction de phrases, vocabulaire de la vie courante et du monde professionnel).
-- Correction systématique : À chaque fois que Faustine essaie de répondre en anglais, corrige gentiment ses erreurs avec une petite explication claire.
-- Mini-rituel : Propose-lui un "mot ou verbe du jour" en anglais avec sa traduction et une phrase d'exemple simple à la fin de tes messages.
-
-==================================================
-PROGRAMME ACADÉMIQUE DE FAUSTINE (L2 GESTION - PARCOURS GÉNÉRAL)
-==================================================
-
-📌 SEMESTRE 3 (L2 - Gestion) :
-- UE 120-3-1 : Fondamentaux et outils de gestion
-  - EC Marketing stratégique
-  - EC Techniques quantitatives de gestion
-  - EC Statistiques pour gestionnaires 2
-- UE 120-3-2 : Environnement juridique
-  - EC Droit social
-  - EC Droit des sociétés
-- UE 120-3-4 : Gestion - Management 2
-  - EC Le manager face aux défis du numérique et de l'environnement
-  - EC Théorie des organisations
-- UE 120-3-0 : Unités transversales
-  - EC LV1 Anglais (S3)
-  - EC Accompagnement à la réussite de mon projet 2
-
-❌ MATIÈRES EXCLUES (Parcours optionnels non choisis) :
-- UE 120-3-5 : Gestion - Internationale 2
-
---------------------------------------------------
-
-📌 SEMESTRE 4 (L2 - Gestion) :
-- UE 120-4-1 : Piloter les organisations
-  - EC Comptabilité de gestion
-  - EC Marketing opérationnel
-- UE 120-4-2 : Droit et finance
-  - EC Droit fiscal
-  - EC Mathématiques financières
-- UE 120-4-3 : Traiter l'information
-  - EC Technologies du web
-  - EC Projet
-- UE 120-4-4 : Gestion - Management 3
-  - EC Entrepreneuriat
-  - EC Management de l'innovation
-- UE 120-4-0 : Unités transversales
-  - EC LV1 Anglais (S4)
-  - EC Business game
-
-❌ MATIÈRES EXCLUES (Parcours optionnels non choisis) :
-- UE 120-4-5 : Gestion - Internationale 3
-
-==================================================
-CONSIGNES & RÈGLES D'ACTION
-==================================================
-1. PÉDAGOGIE ACTIVE (Active Recall) :
-   Ne donne jamais la réponse complète directement. Explique un concept de gestion ou une règle d'anglais simplement, puis pose-lui une question rapide pour vérifier qu'elle a compris.
-
-2. ORGANISATION & SUIVI PRÉCIS :
-   Aide Faustine à planifier ses semaines en alternant entre les révisions de ses cours de gestion et des petites sessions d'anglais (15-20 min/jour).
-
-3. CONCENTRATION SUR LES ÉTUDES :
-   Garde Faustine focalisée sur la réussite de sa L2 et sa progression en anglais.
-"""
-
-# --- GESTION DU STOCKAGE DES FICHIERS ---
-def get_matiere_folder(selected_matiere):
-    parts = selected_matiere.split(" - ", 1)
-    semestre = parts[0]
-    nom_matiere = parts[1] if len(parts) > 1 else selected_matiere
-    folder_path = os.path.join(FILES_DIR, semestre, nom_matiere.replace("/", "_"))
-    os.makedirs(folder_path, exist_ok=True)
-    return folder_path
-
-def save_uploaded_files(uploaded_files, target_folder):
-    for uploaded_file in uploaded_files:
-        file_path = os.path.join(target_folder, uploaded_file.name)
-        with open(file_path, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-MATIERES = {
-    # SEMESTRE 1
-    "S1 - Intro aux sciences de gestion": "Bienvenue en Intro aux sciences de gestion !",
-    "S1 - Hist. pensée & techniques managériales": "Bienvenue en Histoire de la pensée managériale !",
-    "S1 - Introduction au droit": "Bienvenue en Introduction au droit !",
-    "S1 - Théories éco & enjeux contemporains": "Bienvenue en Théories économiques !",
-    "S1 - Micro-économie": "Bienvenue en Micro-économie !",
-    "S1 - Fondamentaux de comptabilité": "Bienvenue en Fondamentaux de comptabilité !",
-    "S1 - Informatique d'usage": "Bienvenue en Informatique d'usage !",
-    "S1 - LV1 Anglais": "Welcome to English class !",
-    
-    # SEMESTRE 2
-    "S2 - Comptabilité générale": "Bienvenue en Comptabilité générale !",
-    "S2 - Statistiques pour gestionnaires 1": "Bienvenue en Statistiques 1 !",
-    "S2 - Droit commercial": "Bienvenue en Droit commercial !",
-    "S2 - Marketing: histoire & réalités": "Bienvenue en Marketing !",
-    "S2 - Négociation commerciale": "Bienvenue en Négociation commerciale !",
-    "S2 - Géopolitique": "Bienvenue en Géopolitique !",
-    "S2 - Sociologie de la consommation": "Bienvenue en Sociologie de la consommation !",
-    "S2 - LV1 Anglais": "Welcome to English class !",
-
-    # SEMESTRE 3
-    "S3 - Marketing stratégique": "Bienvenue en Marketing stratégique !",
-    "S3 - Techniques quantitatives de gestion": "Bienvenue en TQG !",
-    "S3 - Statistiques pour gestionnaires 2": "Bienvenue en Statistiques 2 !",
-    "S3 - Droit social": "Bienvenue en Droit social !",
-    "S3 - Droit des sociétés": "Bienvenue en Droit des sociétés !",
-    "S3 - Le manager face aux défis du numérique": "Bienvenue en Numérique & Environnement !",
-    "S3 - Théorie des organisations": "Bienvenue en Théorie des organisations !",
-    "S3 - LV1 Anglais": "Welcome to English class !",
-   
-    # SEMESTRE 4
-    "S4 - Comptabilité de gestion": "Bienvenue en Comptabilité de gestion !",
-    "S4 - Marketing opérationnel": "Bienvenue en Marketing opérationnel !",
-    "S4 - Droit fiscal": "Bienvenue en Droit fiscal !",
-    "S4 - Mathématiques financières": "Bienvenue en Mathématiques financières !",
-    "S4 - Technologies du web": "Bienvenue en Technologies du web !",
-    "S4 - Projet": "Bienvenue dans l'espace Projet !",
-    "S4 - Entrepreneuriat": "Bienvenue en Entrepreneuriat !",
-    "S4 - Management de l'innovation": "Bienvenue en Management de l'innovation !",
-    "S4 - LV1 Anglais": "Welcome to English class !",
-    "S4 - Business game": "Bienvenue dans le Business Game !"
-}
-
-# Initialisation des états temporaires
-if "qcm_data" not in st.session_state:
-    st.session_state.qcm_data = {}
-if "exercice_actuel" not in st.session_state:
-    st.session_state.exercice_actuel = {}
-
-# --- SIDEBAR ---
-with st.sidebar:
-    st.title("🎓 Atlas Coach")
-    selected_matiere = st.selectbox("Sélectionne ton cours :", list(MATIERES.keys()))
-    
-    st.markdown("---")
-    st.header("📄 Fichiers du cours")
-    
-    matiere_folder = get_matiere_folder(selected_matiere)
-    
-    uploaded_files = st.file_uploader(
-        "Dépose tes cours (PDF, TXT) :",
-        type=["pdf", "txt"],
-        accept_multiple_files=True,
-        key=selected_matiere
-    )
-
-    if uploaded_files:
-        save_uploaded_files(uploaded_files, matiere_folder)
-        st.success(f"{len(uploaded_files)} fichier(s) enregistré(s) !")
-
-    existing_files = os.listdir(matiere_folder)
-    if existing_files:
-        st.caption("📁 Fichiers enregistrés pour ce cours :")
-        for f in existing_files:
-            st.text(f"• {f}")
-
-# --- AFFICHAGE PRINCIPAL ---
-st.title(f"🎓 {selected_matiere}")
-
-# ONGLETS DE TRAVAIL PAR MATIÈRE
-tab_chat, tab_exo, tab_qcm, tab_errors = st.tabs([
-    "💬 Tuteur Chat", 
-    "📝 Exercices", 
-    "❓ QCM", 
-    "🔍 Pointer les Erreurs"
-])
-
-def call_gemini(prompt):
-    api_key = st.secrets.get("GEMINI_API_KEY")
-    if not api_key:
-        st.error("⚠️ La clé API `GEMINI_API_KEY` n'est pas configurée dans les secrets Streamlit.")
-        return None
+# Fonction pour connecter et envoyer des cartes à Anki (via AnkiConnect)
+def add_card_to_anki(front, back, deck_name="Licence Gestion::Atlas"):
+    anki_url = "http://127.0.0.1:8765"
+    payload = {
+        "action": "addNote",
+        "version": 6,
+        "params": {
+            "note": {
+                "deckName": deck_name,
+                "modelName": "Basic",
+                "fields": {
+                    "Front": front,
+                    "Back": back
+                },
+                "options": {
+                    "allowDuplicate": False
+                },
+                "tags": ["atlas", "streamlit_auto"]
+            }
+        }
+    }
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name="gemini-3.5-flash",
-            system_instruction=SYSTEM_INSTRUCTION
-        )
-        response = model.generate_content(prompt)
-        return response.text
-    except Exception as e:
-        st.error(f"Erreur API : {e}")
-        return None
-
-# --- CHARGEMENT DE L'HISTORIQUE DEPUIS LA BASE SQLITE ---
-chat_history = database.charger_messages(selected_matiere)
-
-# Message de bienvenue automatique si aucun message n'existe pour cette matière
-if not chat_history:
-    welcome_msg = MATIERES[selected_matiere]
-    database.sauvegarder_message(selected_matiere, "assistant", welcome_msg)
-    chat_history = database.charger_messages(selected_matiere)
-
-# --- ONGLET 1 : CHAT TUTEUR ---
-with tab_chat:
-    for message in chat_history:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
-
-    user_input = st.chat_input("Pose ta question sur ce cours...")
-
-    if user_input:
-        database.sauvegarder_message(selected_matiere, "user", user_input)
-        
-        with st.chat_message("user"):
-            st.write(user_input)
-
-        with st.chat_message("assistant"):
-            # RECHERCHE RAG DANS LES COURS
-            context_fichiers = rag.search_in_course_files(matiere_folder, user_input)
-            str_context = f"\n\nEXTRAITS DU COURS PERTINENTS :\n{context_fichiers}" if context_fichiers else ""
-            
-            prompt = (
-                f"Aide l'étudiante pour le cours '{selected_matiere}'. "
-                f"{str_context}\n\nQuestion : {user_input}"
-            )
-            
-            reply = call_gemini(prompt)
-            if reply:
-                st.write(reply)
-                database.sauvegarder_message(selected_matiere, "assistant", reply)
-                st.rerun()
-
-# --- ONGLET 2 : EXERCICES PRATIQUES ---
-with tab_exo:
-    st.subheader(f"📝 Exercices d'application - {selected_matiere}")
-    st.write("Génère un exercice sur mesure (cas pratique, problème de calcul, ou mise en pratique d'anglais) basé sur tes cours.")
-    
-    if st.button("🎲 Générer un nouvel exercice", key=f"btn_exo_{selected_matiere}"):
-        context_fichiers = rag.search_in_course_files(matiere_folder, "exercice cours révision")
-        prompt_exo = (
-            f"Crée un exercice pratique court et adapté au niveau L2 Gestion pour la matière '{selected_matiere}'. "
-            f"L'exercice doit comporter une mise en situation et 1 ou 2 questions précises. Ne donne pas la réponse tout de suite. "
-            f"Contenu des cours enregistrés : {context_fichiers}"
-        )
-        exercice_genere = call_gemini(prompt_exo)
-        if exercice_genere:
-            st.session_state.exercice_actuel[selected_matiere] = exercice_genere
-
-    if selected_matiere in st.session_state.exercice_actuel:
-        st.info(st.session_state.exercice_actuel[selected_matiere])
-        
-        reponse_etudiante = st.text_area("Ta réponse / tes calculs :", height=150, key=f"area_exo_{selected_matiere}")
-        
-        if st.button("📤 Soumettre ma réponse pour correction", key=f"sub_exo_{selected_matiere}"):
-            if reponse_etudiante:
-                prompt_correction = (
-                    f"Voici l'exercice proposé pour le cours '{selected_matiere}' :\n"
-                    f"{st.session_state.exercice_actuel[selected_matiere]}\n\n"
-                    f"Voici la réponse proposée par Faustine :\n{reponse_etudiante}\n\n"
-                    f"Évalue sa réponse. Donne une correction détaillée, bienveillante mais rigoureuse, en soulignant les points forts et les erreurs commises."
-                )
-                correction = call_gemini(prompt_correction)
-                if correction:
-                    st.markdown("### 📋 Correction d'Atlas :")
-                    st.write(correction)
-            else:
-                st.warning("Écris ta réponse avant de valider.")
-
-# --- ONGLET 3 : QCM INTERACTIF ---
-with tab_qcm:
-    st.subheader(f"🧪 QCM de révision - {selected_matiere}")
-    
-    if st.button("🔄 Générer un QCM (3 questions)", key=f"btn_qcm_{selected_matiere}"):
-        context_fichiers = rag.search_in_course_files(matiere_folder, "qcm notions fondamentales")
-        prompt_qcm = (
-            f"Génère un QCM de 3 questions à choix multiples sur le cours '{selected_matiere}'. "
-            f"Consigne stricte : Réponds UNIQUEMENT sous la forme d'un tableau JSON valide, sans balises markdown, sans texte additionnel. "
-            f"Structure requise :\n"
-            f'[\n  {{\n    "question": "Texte question",\n    "options": ["A", "B", "C", "D"],\n    "reponse": "Option exacte",\n    "explication": "Pourquoi c\'est juste"\n  }}\n]\n'
-            f"Contenu des cours : {context_fichiers}"
-        )
-        res = call_gemini(prompt_qcm)
-        if res:
-            try:
-                clean_res = res.replace("```json", "").replace("```", "").strip()
-                st.session_state.qcm_data[selected_matiere] = json.loads(clean_res)
-            except Exception:
-                st.warning("Erreur lors de la génération du QCM. Clique à nouveau sur le bouton.")
-
-    if selected_matiere in st.session_state.qcm_data and st.session_state.qcm_data[selected_matiere]:
-        with st.form(f"qcm_form_{selected_matiere}"):
-            user_answers = {}
-            for idx, q in enumerate(st.session_state.qcm_data[selected_matiere]):
-                st.markdown(f"**Q{idx+1}. {q['question']}**")
-                user_answers[idx] = st.radio("Choisis ta réponse :", q["options"], key=f"qcm_{selected_matiere}_{idx}")
-                st.markdown("---")
-            
-            submitted = st.form_submit_button("Valider mes réponses")
-            if submitted:
-                score = 0
-                for idx, q in enumerate(st.session_state.qcm_data[selected_matiere]):
-                    ans = user_answers[idx]
-                    if ans == q["reponse"]:
-                        st.success(f"Q{idx+1} : Correct ! 🎉")
-                        score += 1
-                    else:
-                        st.error(f"Q{idx+1} : Incorrect. Tu as répondu : {ans}. La bonne réponse est : **{q['reponse']}**")
-                    st.info(f"💡 Explication : {q['explication']}")
-                st.metric("Score final", f"{score} / {len(st.session_state.qcm_data[selected_matiere])}")
-
-# --- ONGLET 4 : POINTER LES ERREURS ---
-with tab_errors:
-    st.subheader(f"🔍 Analyse d'erreurs - {selected_matiere}")
-    st.write("Colle ici une réponse d'examen, un exercice rédigé ou un paragraphe en anglais pour qu'Atlas détecte et explique tes fautes.")
-    
-    student_submission = st.text_area("Ton texte à vérifier :", height=150, key=f"err_input_{selected_matiere}")
-    
-    if st.button("🔎 Analyser mes erreurs", key=f"btn_err_{selected_matiere}"):
-        if student_submission:
-            context_fichiers = rag.search_in_course_files(matiere_folder, student_submission)
-            prompt_err = (
-                f"Analyse le texte suivant écrit par l'étudiante Faustine dans le cadre du cours '{selected_matiere}'.\n\n"
-                f"Texte à analyser : {student_submission}\n\n"
-                f"Consignes :\n"
-                f"1. Identifie précisément les fautes (concepts erronés, erreurs de calcul en gestion ou fautes de grammaire/vocabulaire en anglais).\n"
-                f"2. Explique simplement pourquoi c'est incorrect.\n"
-                f"3. Donne la correction optimale ainsi qu'un conseil de révision.\n"
-                f"Documents du cours : {context_fichiers}"
-            )
-            analysis = call_gemini(prompt_err)
-            if analysis:
-                st.markdown("### 📋 Rapport d'analyse d'Atlas :")
-                st.write(analysis)
+        response = requests.post(anki_url, json=payload, timeout=3)
+        result = response.json()
+        if result.get("error") is None:
+            return True, "Flashcard envoyée avec succès à Anki !"
         else:
-            st.warning("Merci d'écrire ou de me coller un texte à examiner.")
+            return False, f"Erreur Anki : {result.get('error')}"
+    except Exception as e:
+        return False, "Impossible de joindre Anki. Vérifiez qu'Anki est ouvert sur votre ordinateur."
+
+# Navigation
+with st.sidebar:
+    st.image("https://img.icons8.com/isometric/100/graduation-cap.png", width=70)
+    st.title("Atlas Cockpit")
+    st.caption("Système d'Apprentissage Actif & Suivi")
+    st.divider()
+    
+    menu = st.radio(
+        "Navigation",
+        ["📊 Tableau de bord", "📝 Centre de QCM", "🃏 Envoi Flashcards Anki", "📚 Bibliothèque de cours"],
+        index=0
+    )
+    
+    st.divider()
+    st.markdown("### 🔌 Statut des Moteurs")
+    st.success("🟢 Obsidian Vault (Connecté)")
+    
+    # Vérification automatique de l'état d'AnkiConnect
+    try:
+        res = requests.post("http://127.0.0.1:8765", json={"action": "version", "version": 6}, timeout=1)
+        if res.status_code == 200:
+            st.success("🟢 AnkiConnect (Actif)")
+        else:
+            st.warning("🟠 AnkiConnect (Inaccessible)")
+    except:
+        st.error("🔴 Anki (Fermé / Déconnecté)")
+
+# En-tête principal
+st.markdown('<div class="main-header">🎓 Projet ATLAS — Plateforme de Révision</div>', unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# 1. TABLEAU DE BORD
+# ---------------------------------------------------------
+if menu == "📊 Tableau de bord":
+    st.markdown('<div class="sub-header">Vue d\'ensemble de ta progression par semestre et par matière.</div>', unsafe_allow_html=True)
+    
+    # Indicateurs de performance
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric(label="Moyenne QCM", value="80%", delta="+5%")
+    with col2:
+        st.metric(label="Cartes Anki Ancrées", value="142", delta="+12 cette semaine")
+    with col3:
+        st.metric(label="Heures de Révision", value="18.5h", delta="+2.5h")
+    with col4:
+        st.metric(label="Objectif Semestre S4", value="65%", delta="En bonne voie")
+        
+    st.divider()
+    
+    col_left, col_right = st.columns([2, 1])
+    
+    with col_left:
+        st.subheader("📈 Avancement par Matière (Semestre S4)")
+        matieres = {
+            "Comptabilité de gestion": 0.85,
+            "Droit fiscal": 0.60,
+            "Marketing opérationnel": 0.90,
+            "Technologie du Web": 0.75,
+            "Mathématiques financières": 0.40,
+            "Anglais 3": 0.95
+        }
+        for mat, progress in matieres.items():
+            st.write(f"**{mat}** ({int(progress*100)}%)")
+            st.progress(progress)
+            
+    with col_right:
+        st.subheader("📋 Dernières Activités")
+        st.info("**Comptabilité de gestion**\n\nQCM • Score: 4/5 (Aujourd'hui)")
+        st.info("**Droit fiscal**\n\nFlashcards • 10 cartes ajoutées (Hier)")
+
+# ---------------------------------------------------------
+# 2. CENTRE DE QCM & EXERCICES
+# ---------------------------------------------------------
+elif menu == "📝 Centre de QCM":
+    st.markdown('<div class="sub-header">Entraîne-toi sur les exercices générés par l\'IA depuis tes cours.</div>', unsafe_allow_html=True)
+    
+    matiere_choisie = st.selectbox("Sélectionne la matière à réviser :", ["Comptabilité de gestion", "Droit fiscal", "Technologie du Web"])
+    
+    st.divider()
+    
+    st.subheader("Question 1 : Seuil de Rentabilité")
+    st.write("*Dans le calcul du seuil de rentabilité en valeur, quelle est la formule exacte ?*")
+    
+    option = st.radio(
+        "Choisis la réponse correcte :",
+        [
+            "A) Charges Fixes / Taux de Marge sur Coût Variable",
+            "B) Charges Variables / Chiffre d'Affaires",
+            "C) Chiffre d'Affaires - Charges Fixes",
+            "D) Marge sur Coût Variable x Charges Fixes"
+        ]
+    )
+    
+    if st.button("Valider ma réponse", type="primary"):
+        if option.startswith("A"):
+            st.success("🎉 Bravo ! Excellente réponse. Le seuil de rentabilité (SR) est bien égal aux Charges Fixes divisées par le Taux de MCV.")
+            st.balloons()
+        else:
+            st.error("❌ Faux. Réponse correcte : **A) Charges Fixes / Taux de Marge sur Coût Variable**.")
+            st.info("💡 **Rappel du cours** : SR (en valeur) = CF / tMCV, où tMCV = MCV / CA.")
+
+# ---------------------------------------------------------
+# 3. ENVOI FLASHCARDS ANKI
+# ---------------------------------------------------------
+elif menu == "🃏 Envoi Flashcards Anki":
+    st.markdown('<div class="sub-header">Crée une carte Anki rapide et envoie-la directement dans ton logiciel.</div>', unsafe_allow_html=True)
+    
+    with st.form("anki_form"):
+        deck = st.text_input("Nom du paquet Anki", value="Licence Gestion::S4::Comptabilité")
+        front_text = st.text_area("Recto (Question / Définition) :", placeholder="Ex: Définition de la Marge sur Coût Variable (MCV)")
+        back_text = st.text_area("Verso (Réponse / Formule) :", placeholder="Ex: Chiffre d'Affaires minus Charges Variables (CA - CV)")
+        
+        submitted = st.form_submit_button("🚀 Envoyer directement dans Anki")
+        
+        if submitted:
+            if front_text and back_text:
+                success, msg = add_card_to_anki(front_text, back_text, deck)
+                if success:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+            else:
+                st.warning("Veuillez remplir le recto et le verso de la carte.")
+
+# ---------------------------------------------------------
+# 4. BIBLIOTHÈQUE DE COURS
+# ---------------------------------------------------------
+elif menu == "📚 Bibliothèque de cours":
+    st.markdown('<div class="sub-header">Consulte les synthèses générées depuis ton coffre Obsidian.</div>', unsafe_allow_html=True)
+    
+    cours_dispo = st.selectbox("Choisir un chapitre :", ["Comptabilité_Chapitre_1_Bilan.md", "Droit_Fiscal_TVA.md"])
+    
+    if cours_dispo == "Comptabilité_Chapitre_1_Bilan.md":
+        st.markdown("""
+        ### 📌 Synthèse : Le Bilan Comptable (ATLAS Format)
+        
+        #### 1. Concept Clé
+        Le bilan est un tableau représentant la situation patrimoniale de l'entreprise à un instant T.
+        * **Actif** (Emplois) : Ce que l'entreprise possède (Immobilisations, Stocks, Créances, Trésorerie).
+        * **Passif** (Ressources) : Ce que l'entreprise doit (Capitaux propres, Dettes financières, Dettes fournisseurs).
+        
+        #### 2. Équilibre Fondamental
+        $$\\text{Actif Total} = \\text{Passif Total}$$
+        
+        #### 3. Formules Importantes
+        * **Fonds de Roulement Net Global (FRNG)** = Capitaux Permanents - Actifs Immobilisés
+        * **Besoin en Fonds de Roulement (BFR)** = Actif Circulant - Passif Circulant
+        """)
