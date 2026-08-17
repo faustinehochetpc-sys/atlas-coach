@@ -64,7 +64,6 @@ def load_data():
         except Exception:
             pass
             
-    # Structure par défaut avec progressions initialisées à 0%
     default_matieres = {}
     default_progression = {}
     
@@ -77,7 +76,8 @@ def load_data():
     return {
         "profile": {
             "objectif": "Réussir mes examens et booster ma productivité",
-            "style": "Explications simples avec exemples concrets"
+            "style": "Explications simples avec exemples concrets",
+            "obsidian_vault_path": ""
         },
         "matieres": default_matieres,
         "progression": default_progression
@@ -94,15 +94,15 @@ def save_data(data):
 if "data" not in st.session_state:
     st.session_state.data = load_data()
 
-# Sécurité si de nouvelles matières sont ajoutées dans la liste
+# Sécurité pour l'initialisation des matières
 for mat in LISTE_MATIERES:
     if mat not in st.session_state.data["matieres"]:
         st.session_state.data["matieres"][mat] = [
             {"role": "assistant", "content": f"Espace de travail prêt pour {mat} !"}
         ]
-    if mat not in st.session_state.data.get("progression", {}):
-        if "progression" not in st.session_state.data:
-            st.session_state.data["progression"] = {}
+    if "progression" not in st.session_state.data:
+        st.session_state.data["progression"] = {}
+    if mat not in st.session_state.data["progression"]:
         st.session_state.data["progression"][mat] = 0
 
 # Extraction de texte pour PDF et TXT
@@ -118,6 +118,16 @@ def extract_text_from_files(uploaded_files):
         elif uploaded_file.name.endswith('.txt'):
             extracted_text += uploaded_file.read().decode('utf-8') + "\n"
     return extracted_text
+
+# Formatage des messages pour export Anki
+def generate_anki_export(messages):
+    anki_content = "# Separator:;\n# html:true\n"
+    for i in range(0, len(messages)-1, 2):
+        if messages[i]["role"] == "user" and messages[i+1]["role"] == "assistant":
+            question = messages[i]["content"].replace("\n", "<br>").replace(";", ",")
+            answer = messages[i+1]["content"].replace("\n", "<br>").replace(";", ",")
+            anki_content += f"{question};{answer}\n"
+    return anki_content
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
@@ -154,6 +164,28 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    # SECTION OBSIDIAN ET ANKI
+    with st.expander("🔗 Obsidian & Anki Integrations"):
+        obs_path = st.text_input(
+            "Chemin du Coffre-fort Obsidian :", 
+            value=st.session_state.data["profile"].get("obsidian_vault_path", "")
+        )
+        if st.button("💾 Enregistrer chemin Obsidian"):
+            st.session_state.data["profile"]["obsidian_vault_path"] = obs_path
+            save_data(st.session_state.data)
+            st.success("Chemin Obsidian enregistré !")
+
+        st.markdown("---")
+        st.subheader("🎴 Exporter vers Anki")
+        anki_data = generate_anki_export(st.session_state.data["matieres"][selected_matiere])
+        st.download_button(
+            label="📥 Télécharger fiches Anki (.txt)",
+            data=anki_data,
+            file_name=f"anki_{selected_matiere.replace(' ', '_')}.txt",
+            mime="text/plain"
+        )
+
+    st.markdown("---")
     with st.expander("⚙️ Profil & Préférences"):
         prof_obj = st.text_input("Objectif :", value=st.session_state.data["profile"].get("objectif", ""))
         styles = ["Explications simples avec exemples concrets", "Synthétique et direct", "Détaillé et académique"]
@@ -168,7 +200,7 @@ with st.sidebar:
             save_data(st.session_state.data)
             st.success("Profil enregistré !")
 
-# --- CONTENU PRINCIPAL : TABLEAU DE BORD & CHAT ---
+# --- CONTENU PRINCIPAL ---
 st.title(f"{selected_matiere}")
 st.caption(f"Objectif : {st.session_state.data['profile']['objectif']} • Style : {st.session_state.data['profile']['style']}")
 
