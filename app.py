@@ -1,213 +1,180 @@
 import streamlit as st
-import requests
+import google.generativeai as genai
+from pypdf import PdfReader
 import json
 import os
 
-# Configuration de la page Streamlit
-st.set_page_config(
-    page_title="Atlas Dashboard - Learning & Revision",
-    page_icon="🎓",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+st.set_page_config(page_title="Atlas Coach", page_icon="🎓", layout="wide")
 
-# Style CSS personnalisé
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        margin-bottom: 0.2rem;
-    }
-    .sub-header {
-        font-size: 1.1rem;
-        color: #4B5563;
-        margin-bottom: 2rem;
-    }
-    .stButton>button {
-        border-radius: 8px;
-        font-weight: 600;
-    }
-</style>
-""", unsafe_allow_html=True)
+DB_FILE = "chat_history.json"
 
-# Fonction pour connecter et envoyer des cartes à Anki (via AnkiConnect)
-def add_card_to_anki(front, back, deck_name="Licence Gestion::Atlas"):
-    anki_url = "http://127.0.0.1:8765"
-    payload = {
-        "action": "addNote",
-        "version": 6,
-        "params": {
-            "note": {
-                "deckName": deck_name,
-                "modelName": "Basic",
-                "fields": {
-                    "Front": front,
-                    "Back": back
-                },
-                "options": {
-                    "allowDuplicate": False
-                },
-                "tags": ["atlas", "streamlit_auto"]
-            }
-        }
-    }
+# Fonctions de gestion de l'historique sur le disque
+def load_history():
+    if os.path.exists(DB_FILE):
+        try:
+            with open(DB_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_history(history):
     try:
-        response = requests.post(anki_url, json=payload, timeout=3)
-        result = response.json()
-        if result.get("error") is None:
-            return True, "Flashcard envoyée avec succès à Anki !"
-        else:
-            return False, f"Erreur Anki : {result.get('error')}"
+        with open(DB_FILE, "w", encoding="utf-8") as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
     except Exception as e:
-        return False, "Impossible de joindre Anki. Vérifiez qu'Anki est ouvert sur votre ordinateur."
+        st.error(f"Erreur de sauvegarde : {e}")
 
-# Navigation
+# DÉROULÉ PARCOURS MANAGEMENT (Licence Gestion - Semestres 1 à 4)
+MATIERES = {
+    # ESPACE GÉNÉRAL
+    "🌐 Chat Général / Tous les cours": "Bienvenue dans ton espace global ! Pose ici tes questions transversales ou d'organisation générale.",
+
+    # SEMESTRE 1
+    "S1 - Introduction aux sciences de gestion": "Bienvenue en Introduction aux sciences de gestion !",
+    "S1 - Histoire de la pensée et des techniques managériales": "Bienvenue en Histoire de la pensée et des techniques managériales !",
+    "S1 - Introduction au droit": "Bienvenue en Introduction au droit !",
+    "S1 - Théories économiques et enjeux contemporains": "Bienvenue en Théories économiques et enjeux contemporains !",
+    "S1 - Micro-économie": "Bienvenue en Micro-économie !",
+    "S1 - Expression écrite et orale": "Bienvenue en Expression écrite et orale !",
+    "S1 - Fondamentaux de comptabilité": "Bienvenue en Fondamentaux de comptabilité !",
+    "S1 - Informatique d'usage": "Bienvenue en Informatique d'usage !",
+    "S1 - LV1 Anglais": "Welcome to English class (Semester 1) !",
+    "S1 - Accompagnement à la réussite de mon projet 1": "Bienvenue dans le suivi de ton projet professionnel !",
+
+    # SEMESTRE 2
+    "S2 - Comptabilité générale": "Bienvenue en Comptabilité générale !",
+    "S2 - Statistiques pour gestionnaires 1": "Bienvenue en Statistiques 1 !",
+    "S2 - Droit commercial": "Bienvenue en Droit commercial !",
+    "S2 - Marketing : histoire et réalités contemporaines": "Bienvenue en Marketing !",
+    "S2 - Négociation commerciale": "Bienvenue en Négociation commerciale !",
+    "S2 - Géopolitique": "Bienvenue en Géopolitique !",
+    "S2 - Sociologie de la consommation": "Bienvenue en Sociologie de la consommation !",
+    "S2 - Informatique d'usage": "Bienvenue en Informatique d'usage (S2) !",
+    "S2 - LV1 Anglais": "Welcome to English class (Semester 2) !",
+
+    # SEMESTRE 3
+    "S3 - Marketing stratégique": "Bienvenue en Marketing stratégique !",
+    "S3 - Techniques quantitatives de gestion": "Bienvenue en TQG !",
+    "S3 - Statistiques pour gestionnaires 2": "Bienvenue en Statistiques 2 !",
+    "S3 - Droit social": "Bienvenue en Droit social !",
+    "S3 - Droit des sociétés": "Bienvenue en Droit des sociétés !",
+    "S3 - Le manager face aux défis du numérique et de l'environnement": "Bienvenue en Numérique & Environnement !",
+    "S3 - Théorie des organisations": "Bienvenue en Théorie des organisations !",
+    "S3 - LV1 Anglais": "Welcome to English class (Semester 3) !",
+    "S3 - Accompagnement à la réussite de mon projet 2": "Bienvenue dans le suivi de ton projet 2 !",
+
+    # SEMESTRE 4
+    "S4 - Comptabilité de gestion": "Bienvenue en Comptabilité de gestion !",
+    "S4 - Marketing opérationnel": "Bienvenue en Marketing opérationnel !",
+    "S4 - Droit fiscal": "Bienvenue en Droit fiscal !",
+    "S4 - Mathématiques financières": "Bienvenue en Mathématiques financières !",
+    "S4 - Technologies du web": "Bienvenue en Technologies du web !",
+    "S4 - Projet": "Bienvenue dans l'espace Projet !",
+    "S4 - Entrepreneuriat": "Bienvenue en Entrepreneuriat !",
+    "S4 - Management de l'innovation": "Bienvenue en Management de l'innovation !",
+    "S4 - LV1 Anglais": "Welcome to English class (Semester 4) !",
+    "S4 - Business game": "Bienvenue dans le Business Game !"
+}
+
+# Extraction du texte des PDF/TXT téléversés
+def extract_text_from_files(uploaded_files):
+    extracted_text = ""
+    for uploaded_file in uploaded_files:
+        if uploaded_file.name.endswith('.pdf'):
+            reader = PdfReader(uploaded_file)
+            for page in reader.pages:
+                text = page.extract_text()
+                if text:
+                    extracted_text += text + "\n"
+        elif uploaded_file.name.endswith('.txt'):
+            extracted_text += uploaded_file.read().decode('utf-8') + "\n"
+    return extracted_text
+
+# Initialisation de l'historique permanent
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = load_history()
+
+# --- BARRE LATÉRALE ---
 with st.sidebar:
-    st.image("https://img.icons8.com/isometric/100/graduation-cap.png", width=70)
-    st.title("Atlas Cockpit")
-    st.caption("Système d'Apprentissage Actif & Suivi")
-    st.divider()
+    st.title("🎓 Atlas Coach")
     
-    menu = st.radio(
-        "Navigation",
-        ["📊 Tableau de bord", "📝 Centre de QCM", "🃏 Envoi Flashcards Anki", "📚 Bibliothèque de cours"],
-        index=0
+    selected_matiere = st.selectbox(
+        "Sélectionne ton cours ou espace :", 
+        list(MATIERES.keys())
     )
     
-    st.divider()
-    st.markdown("### 🔌 Statut des Moteurs")
-    st.success("🟢 Obsidian Vault (Connecté)")
+    st.markdown("---")
+    st.header("📄 Fichiers du cours")
+    uploaded_files = st.file_uploader(
+        "Dépose tes cours (PDF, TXT) :",
+        type=["pdf", "txt"],
+        accept_multiple_files=True,
+        key=selected_matiere
+    )
     
-    # Vérification automatique de l'état d'AnkiConnect
-    try:
-        res = requests.post("http://127.0.0.1:8765", json={"action": "version", "version": 6}, timeout=1)
-        if res.status_code == 200:
-            st.success("🟢 AnkiConnect (Actif)")
-        else:
-            st.warning("🟠 AnkiConnect (Inaccessible)")
-    except:
-        st.error("🔴 Anki (Fermé / Déconnecté)")
-
-# En-tête principal
-st.markdown('<div class="main-header">🎓 Projet ATLAS — Plateforme de Révision</div>', unsafe_allow_html=True)
-
-# ---------------------------------------------------------
-# 1. TABLEAU DE BORD
-# ---------------------------------------------------------
-if menu == "📊 Tableau de bord":
-    st.markdown('<div class="sub-header">Vue d\'ensemble de ta progression par semestre et par matière.</div>', unsafe_allow_html=True)
-    
-    # Indicateurs de performance
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric(label="Moyenne QCM", value="80%", delta="+5%")
-    with col2:
-        st.metric(label="Cartes Anki Ancrées", value="142", delta="+12 cette semaine")
-    with col3:
-        st.metric(label="Heures de Révision", value="18.5h", delta="+2.5h")
-    with col4:
-        st.metric(label="Objectif Semestre S4", value="65%", delta="En bonne voie")
-        
-    st.divider()
-    
-    col_left, col_right = st.columns([2, 1])
-    
-    with col_left:
-        st.subheader("📈 Avancement par Matière (Semestre S4)")
-        matieres = {
-            "Comptabilité de gestion": 0.85,
-            "Droit fiscal": 0.60,
-            "Marketing opérationnel": 0.90,
-            "Technologie du Web": 0.75,
-            "Mathématiques financières": 0.40,
-            "Anglais 3": 0.95
-        }
-        for mat, progress in matieres.items():
-            st.write(f"**{mat}** ({int(progress*100)}%)")
-            st.progress(progress)
-            
-    with col_right:
-        st.subheader("📋 Dernières Activités")
-        st.info("**Comptabilité de gestion**\n\nQCM • Score: 4/5 (Aujourd'hui)")
-        st.info("**Droit fiscal**\n\nFlashcards • 10 cartes ajoutées (Hier)")
-
-# ---------------------------------------------------------
-# 2. CENTRE DE QCM & EXERCICES
-# ---------------------------------------------------------
-elif menu == "📝 Centre de QCM":
-    st.markdown('<div class="sub-header">Entraîne-toi sur les exercices générés par l\'IA depuis tes cours.</div>', unsafe_allow_html=True)
-    
-    matiere_choisie = st.selectbox("Sélectionne la matière à réviser :", ["Comptabilité de gestion", "Droit fiscal", "Technologie du Web"])
-    
-    st.divider()
-    
-    st.subheader("Question 1 : Seuil de Rentabilité")
-    st.write("*Dans le calcul du seuil de rentabilité en valeur, quelle est la formule exacte ?*")
-    
-    option = st.radio(
-        "Choisis la réponse correcte :",
-        [
-            "A) Charges Fixes / Taux de Marge sur Coût Variable",
-            "B) Charges Variables / Chiffre d'Affaires",
-            "C) Chiffre d'Affaires - Charges Fixes",
-            "D) Marge sur Coût Variable x Charges Fixes"
+    st.markdown("---")
+    if st.button("🗑️ Effacer cette discussion"):
+        st.session_state.chat_history[selected_matiere] = [
+            {"role": "assistant", "content": MATIERES[selected_matiere]}
         ]
-    )
+        save_history(st.session_state.chat_history)
+        st.rerun()
+
+# Initialisation du canal si première visite
+if selected_matiere not in st.session_state.chat_history:
+    st.session_state.chat_history[selected_matiere] = [
+        {"role": "assistant", "content": MATIERES[selected_matiere]}
+    ]
+
+# --- AFFICHAGE DU CHAT PRINCIPAL ---
+st.title(selected_matiere)
+
+for message in st.session_state.chat_history[selected_matiere]:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
+
+user_input = st.chat_input(f"Pose ta question sur {selected_matiere}...")
+
+if user_input:
+    st.session_state.chat_history[selected_matiere].append({"role": "user", "content": user_input})
+    save_history(st.session_state.chat_history)
     
-    if st.button("Valider ma réponse", type="primary"):
-        if option.startswith("A"):
-            st.success("🎉 Bravo ! Excellente réponse. Le seuil de rentabilité (SR) est bien égal aux Charges Fixes divisées par le Taux de MCV.")
-            st.balloons()
+    with st.chat_message("user"):
+        st.write(user_input)
+        
+    with st.chat_message("assistant"):
+        api_key = st.secrets.get("GEMINI_API_KEY")
+        if not api_key:
+            error_msg = "⚠️ La clé API `GEMINI_API_KEY` n'est pas configurée dans `.streamlit/secrets.toml`."
+            st.warning(error_msg)
+            st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": error_msg})
+            save_history(st.session_state.chat_history)
         else:
-            st.error("❌ Faux. Réponse correcte : **A) Charges Fixes / Taux de Marge sur Coût Variable**.")
-            st.info("💡 **Rappel du cours** : SR (en valeur) = CF / tMCV, où tMCV = MCV / CA.")
-
-# ---------------------------------------------------------
-# 3. ENVOI FLASHCARDS ANKI
-# ---------------------------------------------------------
-elif menu == "🃏 Envoi Flashcards Anki":
-    st.markdown('<div class="sub-header">Crée une carte Anki rapide et envoie-la directement dans ton logiciel.</div>', unsafe_allow_html=True)
-    
-    with st.form("anki_form"):
-        deck = st.text_input("Nom du paquet Anki", value="Licence Gestion::S4::Comptabilité")
-        front_text = st.text_area("Recto (Question / Définition) :", placeholder="Ex: Définition de la Marge sur Coût Variable (MCV)")
-        back_text = st.text_area("Verso (Réponse / Formule) :", placeholder="Ex: Chiffre d'Affaires minus Charges Variables (CA - CV)")
-        
-        submitted = st.form_submit_button("🚀 Envoyer directement dans Anki")
-        
-        if submitted:
-            if front_text and back_text:
-                success, msg = add_card_to_anki(front_text, back_text, deck)
-                if success:
-                    st.success(msg)
+            try:
+                genai.configure(api_key=api_key)
+                
+                # Contextualisation selon l'espace choisi
+                if selected_matiere == "🌐 Chat Général / Tous les cours":
+                    system_prompt = "Tu es Atlas, un coach pédagogique personnel en Licence de Gestion (Parcours Management). Tu aides l'étudiant à s'organiser, réviser de façon transversale et préparer sa rentrée."
                 else:
-                    st.error(msg)
-            else:
-                st.warning("Veuillez remplir le recto et le verso de la carte.")
-
-# ---------------------------------------------------------
-# 4. BIBLIOTHÈQUE DE COURS
-# ---------------------------------------------------------
-elif menu == "📚 Bibliothèque de cours":
-    st.markdown('<div class="sub-header">Consulte les synthèses générées depuis ton coffre Obsidian.</div>', unsafe_allow_html=True)
-    
-    cours_dispo = st.selectbox("Choisir un chapitre :", ["Comptabilité_Chapitre_1_Bilan.md", "Droit_Fiscal_TVA.md"])
-    
-    if cours_dispo == "Comptabilité_Chapitre_1_Bilan.md":
-        st.markdown("""
-        ### 📌 Synthèse : Le Bilan Comptable (ATLAS Format)
-        
-        #### 1. Concept Clé
-        Le bilan est un tableau représentant la situation patrimoniale de l'entreprise à un instant T.
-        * **Actif** (Emplois) : Ce que l'entreprise possède (Immobilisations, Stocks, Créances, Trésorerie).
-        * **Passif** (Ressources) : Ce que l'entreprise doit (Capitaux propres, Dettes financières, Dettes fournisseurs).
-        
-        #### 2. Équilibre Fondamental
-        $$\\text{Actif Total} = \\text{Passif Total}$$
-        
-        #### 3. Formules Importantes
-        * **Fonds de Roulement Net Global (FRNG)** = Capitaux Permanents - Actifs Immobilisés
-        * **Besoin en Fonds de Roulement (BFR)** = Actif Circulant - Passif Circulant
-        """)
+                    system_prompt = f"Tu es Atlas, un coach expert de la matière '{selected_matiere}' en Licence de Gestion. Donne des explications claires, structurées et adaptées au niveau universitaire."
+                
+                # Prise en compte des documents déposés
+                context_text = ""
+                if uploaded_files:
+                    files_text = extract_text_from_files(uploaded_files)
+                    if files_text:
+                        context_text = f"\n\nCONTENU DES COURS FOURNIS :\n{files_text[:4000]}"
+                
+                full_prompt = f"{system_prompt}{context_text}\n\nQuestion de l'élève : {user_input}"
+                
+                model = genai.GenerativeModel("gemini-1.5-flash")
+                response = model.generate_content(full_prompt)
+                
+                st.write(response.text)
+                st.session_state.chat_history[selected_matiere].append({"role": "assistant", "content": response.text})
+                save_history(st.session_state.chat_history)
+                
+            except Exception as e:
+                st.error(f"Erreur lors de la génération : {e}")
