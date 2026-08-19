@@ -106,17 +106,35 @@ for mat in LISTE_MATIERES:
         st.session_state.data["progression"][mat] = 0
 
 # Extraction de texte pour PDF et TXT
-def extract_text_from_files(uploaded_files):
+
+    def extract_text_from_files_and_obsidian(uploaded_files):
     extracted_text = ""
-    for uploaded_file in uploaded_files:
-        if uploaded_file.name.endswith('.pdf'):
-            reader = PdfReader(uploaded_file)
-            for page in reader.pages:
-                text = page.extract_text()
-                if text:
-                    extracted_text += text + "\n"
-        elif uploaded_file.name.endswith('.txt'):
-            extracted_text += uploaded_file.read().decode('utf-8') + "\n"
+    
+    # 1. Lecture des PDF/TXT téléversés
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            if uploaded_file.name.endswith('.pdf'):
+                reader = PdfReader(uploaded_file)
+                for page in reader.pages:
+                    text = page.extract_text()
+                    if text:
+                        extracted_text += text + "\n"
+            elif uploaded_file.name.endswith('.txt'):
+                extracted_text += uploaded_file.read().decode('utf-8') + "\n"
+                
+    # 2. Lecture automatique du dossier Obsidian
+    vault_path = st.session_state.data["profile"].get("obsidian_vault_path", "")
+    if vault_path and os.path.exists(vault_path):
+        for root, _, files in os.walk(vault_path):
+            for file in files:
+                if file.endswith(".md"):
+                    file_path = os.path.join(root, file)
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as md_file:
+                            extracted_text += f"\n--- Note Obsidian ({file}) ---\n" + md_file.read()
+                    except Exception:
+                        pass
+                        
     return extracted_text
 
 # Formatage des messages pour export Anki
@@ -131,7 +149,7 @@ def generate_anki_export(messages):
 
 # --- BARRE LATÉRALE ---
 with st.sidebar:
-    st.title("🎓 Atlas Coach")
+    st.title("🎓 Atlas")
     st.header("📚 Tes Cours & Matières")
     
     selected_matiere = st.selectbox("Sélectionne ton cours :", LISTE_MATIERES)
@@ -255,10 +273,9 @@ if prompt:
                     )
                 
                 context_text = ""
-                if uploaded_files:
-                    files_text = extract_text_from_files(uploaded_files)
-                    if files_text:
-                        context_text = f"\n\nCONTENU DES COURS FOURNIS :\n{files_text[:4000]}"
+                all_text = extract_text_from_files_and_obsidian(uploaded_files)
+                if all_text:
+                    context_text = f"\n\nCONTENU DES COURS ET NOTES OBSIDIAN :\n{all_text[:6000]}"
                 
                 full_prompt = f"{system_instruction}{context_text}\n\nQuestion : {prompt}"
                 
