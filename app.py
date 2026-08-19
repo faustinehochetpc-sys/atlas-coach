@@ -108,7 +108,7 @@ for mat in LISTE_MATIERES:
 # Extraction de texte pour PDF et TXT
 
     def extract_text_from_files_and_obsidian(uploaded_files):
-    extracted_text = ""
+        extracted_text = ""
     
     # 1. Lecture des PDF/TXT téléversés
     if uploaded_files:
