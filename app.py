@@ -135,7 +135,7 @@ for mat in LISTE_MATIERES:
                     except Exception:
                         pass
                         
-     return extracted_text
+      return extracted_text
 
 # Formatage des messages pour export Anki
 def generate_anki_export(messages):
