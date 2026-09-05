@@ -4,8 +4,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 import streamlit as st
 from google import genai
+from pypdf import PdfReader
 
-# Chargement des variables d'environnement depuis un fichier .env s'il existe
+# Chargement automatique des variables d'environnement (.env)
 load_dotenv()
 
 # ============================================================
@@ -13,14 +14,14 @@ load_dotenv()
 # ============================================================
 
 st.set_page_config(
-    page_title="Atlas beau-gosse",
+    page_title="Atlas — Coach Étudiant",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 DATA_FILE = Path("atlas_data.json")
-GEMINI_MODEL = "gemini-3.5-flash"
+GEMINI_MODEL = "gemini-1.5-flash"
 MAX_CONTEXT_CHARS = 100000
 
 MATIERES_PAR_SEMESTRE = {
@@ -80,7 +81,7 @@ MATIERES_PAR_SEMESTRE = {
 LISTE_MATIERES = [m for liste in MATIERES_PAR_SEMESTRE.values() for m in liste]
 
 # ============================================================
-# GESTION DES DONNÉES LOCALES
+# GESTION DES PREFÉRENCES ET HISTORIQUE PRIVÉ
 # ============================================================
 
 def load_data():
@@ -95,13 +96,9 @@ def load_data():
 
     data.setdefault("obsidian_vault_path", "")
     data.setdefault("notes_generales", "")
-    data.setdefault("matieres", {})
     data.setdefault("notes_specifiques", {})
 
     for matiere in LISTE_MATIERES:
-        data["matieres"].setdefault(matiere, [
-            {"role": "assistant", "content": f"Espace de travail Atlas prêt pour {matiere} !"}
-        ])
         data["notes_specifiques"].setdefault(matiere, "")
 
     return data
@@ -116,12 +113,13 @@ def save_data(data):
 if "data" not in st.session_state:
     st.session_state.data = load_data()
 
-# ============================================================
-# EXTRACTION DU CONTENU OBSIDIAN
-# ============================================================
+# Historique des chats propre à la session utilisateur (non partagé)
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = {}
 
-from pypdf import PdfReader
-
+# ============================================================
+# EXTRACTION DU CONTENU OBSIDIAN (MARKDOWN ET PDF)
+# ============================================================
 
 def parse_obsidian_vault(vault_path):
     if not vault_path or not os.path.exists(vault_path):
@@ -131,17 +129,13 @@ def parse_obsidian_vault(vault_path):
         for file in files:
             file_path = os.path.join(root, file)
 
-            # Lecture des notes Markdown
             if file.lower().endswith(".md"):
                 try:
                     with open(file_path, "r", encoding="utf-8") as f:
-                        extracted += (
-                            f"\n--- Note Obsidian (.md): {file} ---\n{f.read()}\n"
-                        )
+                        extracted += f"\n--- Note Obsidian (.md): {file} ---\n{f.read()}\n"
                 except Exception:
                     pass
 
-            # Lecture des fichiers PDF
             elif file.lower().endswith(".pdf"):
                 try:
                     reader = PdfReader(file_path)
@@ -197,31 +191,30 @@ def query_gemini(api_key, selected_matiere, messages, prompt, context, notes_gen
             yield chunk.text
 
 # ============================================================
-# INTERFACE SIDEBAR & GESTION SÉCURISÉE CLÉ API
+# INTERFACE SIDEBAR
 # ============================================================
 
-# 1. Recherche automatique d'une clé enregistrée côté serveur (.env ou secrets Streamlit)
 env_api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
 
 with st.sidebar:
-    st.title("🎓 Atlas — Urgence")
+    st.title("🎓 Atlas")
 
-    # --- CLÉ API SECURISE ---
+    # --- CLÉ API SÉCURISÉE ---
     st.subheader("🔑 Clé API Gemini")
     
     if env_api_key:
-        st.success("🔒 Clé API chargée de manière sécurisée.")
-        active_api_key = env_api_key
+        st.success("🔒 Clé API chargée en toute sécurité.")
+        active_key = env_api_key
     else:
         api_key_input = st.text_input(
             "Colle ta clé API Gemini :",
             type="password",
             value=st.session_state.get("user_gemini_key", ""),
-            placeholder="AIzaSy... ou AQ...",
+            placeholder="AIzaSy...",
         )
         if api_key_input:
             st.session_state["user_gemini_key"] = api_key_input.strip()
-        active_api_key = st.session_state.get("user_gemini_key", "")
+        active_key = st.session_state.get("user_gemini_key", "")
 
     st.divider()
 
@@ -260,11 +253,16 @@ with st.sidebar:
 
     st.divider()
     if st.button("🔄 Effacer cette discussion", use_container_width=True):
-        st.session_state.data["matieres"][selected_matiere] = [
+        st.session_state.chat_history[selected_matiere] = [
             {"role": "assistant", "content": f"Espace réinitialisé pour {selected_matiere}."}
         ]
-        save_data(st.session_state.data)
         st.rerun()
+
+# Initialisation du chat pour la matière sélectionnée si absent
+if selected_matiere not in st.session_state.chat_history:
+    st.session_state.chat_history[selected_matiere] = [
+        {"role": "assistant", "content": f"Espace de travail Atlas prêt pour {selected_matiere} !"}
+    ]
 
 # ============================================================
 # ZONE PRINCIPALE
@@ -305,8 +303,8 @@ with col4:
             "Mets l'ensemble des cartes dans un bloc de code pour que je puisse tout copier d'un coup."
         )
 
-# --- GESTION DU CHAT ---
-chat_history = st.session_state.data["matieres"][selected_matiere]
+# --- GESTION DU CHAT ISOLÉ PAR UTILISATEUR ---
+chat_history = st.session_state.chat_history[selected_matiere]
 
 for message in chat_history:
     with st.chat_message(message["role"]):
@@ -316,7 +314,7 @@ user_input = st.chat_input("Pose une question ou demande des révisions...")
 final_prompt = prompt_generator if prompt_generator else user_input
 
 if final_prompt:
-    if not active_api_key:
+    if not active_key:
         st.error("⚠️ Veuillez coller votre clé API Gemini dans le panneau latéral à gauche.")
     else:
         st.chat_message("user").markdown(final_prompt)
@@ -325,7 +323,7 @@ if final_prompt:
         with st.chat_message("assistant"):
             try:
                 response_stream = query_gemini(
-                    api_key=active_api_key,
+                    api_key=active_key,
                     selected_matiere=selected_matiere,
                     messages=chat_history[:-1],
                     prompt=final_prompt,
@@ -335,6 +333,5 @@ if final_prompt:
                 )
                 full_response = st.write_stream(response_stream)
                 chat_history.append({"role": "assistant", "content": full_response})
-                save_data(st.session_state.data)
             except Exception as e:
                 st.error(f"Erreur API Gemini : {e}")
