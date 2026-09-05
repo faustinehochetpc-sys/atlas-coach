@@ -1,15 +1,19 @@
 import json
 import os
 from pathlib import Path
+from dotenv import load_dotenv
 import streamlit as st
 from google import genai
+
+# Chargement des variables d'environnement depuis un fichier .env s'il existe
+load_dotenv()
 
 # ============================================================
 # CONFIGURATION INITIALE
 # ============================================================
 
 st.set_page_config(
-    page_title="Atlas — Urgence Rentrée",
+    page_title="Atlas beau-gosse",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -116,18 +120,41 @@ if "data" not in st.session_state:
 # EXTRACTION DU CONTENU OBSIDIAN
 # ============================================================
 
+from pypdf import PdfReader
+
+
 def parse_obsidian_vault(vault_path):
     if not vault_path or not os.path.exists(vault_path):
         return ""
     extracted = ""
     for root, _, files in os.walk(vault_path):
         for file in files:
+            file_path = os.path.join(root, file)
+
+            # Lecture des notes Markdown
             if file.lower().endswith(".md"):
                 try:
-                    with open(os.path.join(root, file), "r", encoding="utf-8") as f:
-                        extracted += f"\n--- Note Obsidian: {file} ---\n{f.read()}\n"
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        extracted += (
+                            f"\n--- Note Obsidian (.md): {file} ---\n{f.read()}\n"
+                        )
                 except Exception:
                     pass
+
+            # Lecture des fichiers PDF
+            elif file.lower().endswith(".pdf"):
+                try:
+                    reader = PdfReader(file_path)
+                    pdf_text = ""
+                    for page in reader.pages:
+                        text = page.extract_text()
+                        if text:
+                            pdf_text += text + "\n"
+                    if pdf_text:
+                        extracted += f"\n--- Fichier PDF: {file} ---\n{pdf_text}\n"
+                except Exception:
+                    pass
+
     return extracted
 
 # ============================================================
@@ -170,22 +197,31 @@ def query_gemini(api_key, selected_matiere, messages, prompt, context, notes_gen
             yield chunk.text
 
 # ============================================================
-# INTERFACE SIDEBAR
+# INTERFACE SIDEBAR & GESTION SÉCURISÉE CLÉ API
 # ============================================================
+
+# 1. Recherche automatique d'une clé enregistrée côté serveur (.env ou secrets Streamlit)
+env_api_key = os.getenv("GEMINI_API_KEY") or st.secrets.get("GEMINI_API_KEY", "")
 
 with st.sidebar:
     st.title("🎓 Atlas — Urgence")
 
-    # --- CLÉ API DIRECTE ---
+    # --- CLÉ API SECURISE ---
     st.subheader("🔑 Clé API Gemini")
-    api_key_input = st.text_input(
-        "Colle ta clé API Gemini :",
-        type="password",
-        value=st.session_state.get("user_gemini_key", ""),
-        placeholder="AIzaSy...",
-    )
-    if api_key_input:
-        st.session_state["user_gemini_key"] = api_key_input.strip()
+    
+    if env_api_key:
+        st.success("🔒 Clé API chargée de manière sécurisée.")
+        active_api_key = env_api_key
+    else:
+        api_key_input = st.text_input(
+            "Colle ta clé API Gemini :",
+            type="password",
+            value=st.session_state.get("user_gemini_key", ""),
+            placeholder="AIzaSy... ou AQ...",
+        )
+        if api_key_input:
+            st.session_state["user_gemini_key"] = api_key_input.strip()
+        active_api_key = st.session_state.get("user_gemini_key", "")
 
     st.divider()
 
@@ -209,14 +245,12 @@ with st.sidebar:
 
     # --- NOTES ---
     with st.expander("📝 Bloc-notes"):
-        # Notes générales
         st.markdown("**Notes Générales**")
         gen_notes = st.text_area("Objectifs, planning...", value=st.session_state.data["notes_generales"], height=80)
         if gen_notes != st.session_state.data["notes_generales"]:
             st.session_state.data["notes_generales"] = gen_notes
             save_data(st.session_state.data)
 
-        # Notes par matière
         st.markdown(f"**Notes pour {selected_matiere}**")
         curr_notes = st.session_state.data["notes_specifiques"].get(selected_matiere, "")
         spec_notes = st.text_area("Points à revoir...", value=curr_notes, height=80)
@@ -238,7 +272,6 @@ with st.sidebar:
 
 st.title(f"📌 {selected_matiere}")
 
-# Chargement du contexte Obsidian
 obsidian_context = parse_obsidian_vault(st.session_state.data.get("obsidian_vault_path", ""))
 
 if obsidian_context:
@@ -279,14 +312,11 @@ for message in chat_history:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# Récupération du prompt (soit saisi, soit généré par les boutons)
 user_input = st.chat_input("Pose une question ou demande des révisions...")
 final_prompt = prompt_generator if prompt_generator else user_input
 
 if final_prompt:
-    active_key = st.session_state.get("user_gemini_key", "").strip()
-
-    if not active_key:
+    if not active_api_key:
         st.error("⚠️ Veuillez coller votre clé API Gemini dans le panneau latéral à gauche.")
     else:
         st.chat_message("user").markdown(final_prompt)
@@ -295,7 +325,7 @@ if final_prompt:
         with st.chat_message("assistant"):
             try:
                 response_stream = query_gemini(
-                    api_key=active_key,
+                    api_key=active_api_key,
                     selected_matiere=selected_matiere,
                     messages=chat_history[:-1],
                     prompt=final_prompt,
