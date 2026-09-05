@@ -14,14 +14,14 @@ load_dotenv()
 # ============================================================
 
 st.set_page_config(
-    page_title="Atlas — Coach Étudiant",
+    page_title="Atlas — beau-gosse",
     page_icon="🎓",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 DATA_FILE = Path("atlas_data.json")
-GEMINI_MODEL = "gemini-1.5-flash"
+GEMINI_MODEL = "gemini-3.5-flash"
 MAX_CONTEXT_CHARS = 100000
 
 MATIERES_PAR_SEMESTRE = {
@@ -55,7 +55,7 @@ MATIERES_PAR_SEMESTRE = {
         "🌐 Tous les cours S3",
         "S3 - Marketing stratégique",
         "S3 - Techniques quantitatives de gestion",
-        "S3 - Statistiques pour gestionnaires 2",
+        "S3 - Mathématiques financières",
         "S3 - Droit social",
         "S3 - Droit des sociétés",
         "S3 - Le manager face aux défis du numérique et de l'environnement",
@@ -68,7 +68,7 @@ MATIERES_PAR_SEMESTRE = {
         "S4 - Comptabilité de gestion",
         "S4 - Marketing opérationnel",
         "S4 - Droit fiscal",
-        "S4 - Mathématiques financières",
+        "S4 - Statistiques pour gestionnaires 2",
         "S4 - Technologies du web",
         "S4 - Projet",
         "S4 - Entrepreneuriat",
